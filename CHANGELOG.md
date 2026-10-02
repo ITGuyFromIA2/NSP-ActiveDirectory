@@ -3,6 +3,14 @@
 All notable changes to NSP.ActiveDirectory are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.2
+
+- The hand-back folder now opens in Explorer for real. Explorer runs as the desktop user without
+  elevation and refused to open the Administrators-only folder directly (seen live); the tool now
+  gives that user read-only access to the one Responses folder first (what Explorer's own "Continue"
+  prompt does, but read-only), then opens it. The user is the owner of the session's explorer.exe,
+  so over-the-shoulder elevation works too.
+
 ## 0.1.1
 
 - Menu "Export VPN inventory" opens the output folder in Explorer after writing

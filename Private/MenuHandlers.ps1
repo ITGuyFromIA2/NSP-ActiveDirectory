@@ -186,6 +186,8 @@ function Invoke-NSPADMenuVpnInventory {
         Write-NSPConsoleLine ('  Groups: {0}   Templates: {1}   TameMyCerts policies: {2}' -f $result.Groups, $result.Templates, $result.TameMyCertsPolicies) -Role Success
         Write-NSPConsoleLine "  Written: $($result.Path)" -Role Success
         Write-NSPConsoleLine "  Copy it to the Orchestrator's Staging\<Client>\Inbox\ folder (with the ias.xml for the VPN report)." -Role Heading
+        Write-NSPConsoleLine '  Opening the folder in Explorer (accept the access prompt if one appears).' -Role Muted
+        Open-NSPOutputFolder -Path $result.Path
     } catch {
         Write-NSPConsoleLine "`n  ERROR: $($_.Exception.Message)" -Role Error
     }

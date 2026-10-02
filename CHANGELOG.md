@@ -3,6 +3,12 @@
 All notable changes to NSP.ActiveDirectory are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.1
+
+- Menu "Export VPN inventory" opens the output folder in Explorer after writing
+  <Company>_AD_Response.json, so the tech can copy it off the server (accept the access prompt - the
+  folder is Administrators-only).
+
 ## 0.1.0
 
 First release.

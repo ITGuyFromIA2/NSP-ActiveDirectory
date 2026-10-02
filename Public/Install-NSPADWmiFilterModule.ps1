@@ -10,8 +10,9 @@ function Install-NSPADWmiFilterModule {
     .EXAMPLE
         Install-NSPADWmiFilterModule
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param()
+    if (-not $PSCmdlet.ShouldProcess($env:COMPUTERNAME, 'Install the WMI-filter module')) { return }
     Use-NSPADDependency
     if (-not (Get-Module -ListAvailable -Name BW.Utils.GroupPolicy.WMIFilter)) {
         Invoke-NSPStep -Description 'Install BW.Utils.GroupPolicy.WMIFilter (PSGallery)' `

@@ -18,7 +18,7 @@ function Export-NSPADVpnInventory {
     .EXAMPLE
         Export-NSPADVpnInventory -Format Legacy -OutputDirectory C:\Temp
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [string]$OutputDirectory,
         [string]$Company = '',
@@ -28,6 +28,7 @@ function Export-NSPADVpnInventory {
         [string]$NpsConfigPath,
         [string]$PolicyDirectory
     )
+    if (-not $PSCmdlet.ShouldProcess($(if ($OutputDirectory) { $OutputDirectory } else { 'the AD work folder (Responses)' }), 'Write the VPN inventory file')) { return }
     if ($Format -eq 'Handoff' -or -not $OutputDirectory) { Use-NSPADDependency }
     if (-not $OutputDirectory) { $OutputDirectory = Get-NSPToolWorkPath -Tool AD -Kind Responses -Create }
 

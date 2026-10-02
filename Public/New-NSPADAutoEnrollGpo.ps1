@@ -9,12 +9,13 @@ function New-NSPADAutoEnrollGpo {
     .EXAMPLE
         New-NSPADAutoEnrollGpo -GpoName 'NSP - Certificate Auto-Enrollment'
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [string]$GpoName = 'NSP - Certificate Auto-Enrollment',
         [switch]$IncludeComputerConfig,
         [string]$DomainDn
     )
+    if (-not $PSCmdlet.ShouldProcess("$GpoName", 'Create the certificate auto-enrollment GPO and link it at the domain root')) { return }
     Use-NSPADDependency
     if (-not (Get-Command Get-GPO -ErrorAction SilentlyContinue)) {
         Write-Host '  GroupPolicy module not available - run Install-NSPADPrerequisite (menu 1),' -ForegroundColor Red

@@ -9,11 +9,12 @@ function New-NSPADGpoLink {
     .EXAMPLE
         New-NSPADGpoLink -GpoName 'NSP - Certificate Auto-Enrollment' -TargetDN 'DC=example,DC=com'
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)][string]$GpoName,
         [Parameter(Mandatory)][string]$TargetDN
     )
+    if (-not $PSCmdlet.ShouldProcess("$TargetDN", "Link GPO '$GpoName'")) { return }
     Use-NSPADDependency
     Assert-NSPADCommand Get-GPO -ModuleHint 'GroupPolicy'
     $existingLinks = @()
@@ -35,5 +36,5 @@ function New-NSPADGpoLink {
             } catch {
                 if ($_.Exception.Message -notmatch 'already linked|already exists') { throw }
             }
-        } -ContinueOnError | Out-Null
+        } | Out-Null
 }

@@ -8,7 +8,12 @@
 BeforeAll {
     # Sibling checkouts first, so the module's on-demand loader finds them already loaded.
     $toolkits = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    Import-Module (Join-Path (Split-Path -Parent $toolkits) 'NSP-Bootstrap\NSP.Bootstrap.psd1') -Force -Global -ErrorAction Stop
+    # NSP-Bootstrap sits next to the other checkouts, or one level up (C:\GitRepo\NSP-Bootstrap beside
+    # C:\GitRepo\NSP-PoSHToolkits); NSP_ECOSYSTEM_ROOT names another folder that holds the NSP-* checkouts.
+    $bootstrap = @($env:NSP_ECOSYSTEM_ROOT, $toolkits, (Split-Path -Parent $toolkits)) | Where-Object { $_ } |
+        ForEach-Object { Join-Path $_ 'NSP-Bootstrap\NSP.Bootstrap.psd1' } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if (-not $bootstrap) { throw 'NSP-Bootstrap checkout not found next to this repository (or set NSP_ECOSYSTEM_ROOT).' }
+    Import-Module $bootstrap -Force -Global -ErrorAction Stop
     foreach ($m in 'NSP-Console\NSP.Console.psd1', 'NSP-Toolkit\NSP.Toolkit.psd1', 'NSP-ClientScripts\NSP.ClientScripts.psd1') {
         Import-Module (Join-Path $toolkits $m) -Force -Global -ErrorAction Stop
     }
@@ -150,6 +155,34 @@ Describe 'NSP.ActiveDirectory' {
             Mock -ModuleName NSP.ActiveDirectory New-GPLink { }
             New-NSPADGpoLink -GpoName 'Test GPO' -TargetDN 'DC=x'
             Should -Invoke -ModuleName NSP.ActiveDirectory New-GPLink -Times 0 -Exactly
+        }
+
+        It 'surfaces a real link failure instead of swallowing it (review HV-4)' {
+            Set-NSPDryRun -Enabled $false
+            Mock -ModuleName NSP.ActiveDirectory Get-GPInheritance { [pscustomobject]@{ GpoLinks = @() } }
+            Mock -ModuleName NSP.ActiveDirectory New-GPLink { throw 'Access is denied' }
+            { New-NSPADGpoLink -GpoName 'Test GPO' -TargetDN 'DC=x' } | Should -Throw '*Access is denied*'
+            Mock -ModuleName NSP.ActiveDirectory New-GPLink { throw 'The GPO is already linked to this target' }
+            { New-NSPADGpoLink -GpoName 'Test GPO' -TargetDN 'DC=x' } | Should -Not -Throw
+        }
+
+        It '-WhatIf changes nothing even with dry run off, and still returns the DN (review HV-5)' {
+            Set-NSPDryRun -Enabled $false
+            Mock -ModuleName NSP.ActiveDirectory Get-ADGroup { $null }
+            Mock -ModuleName NSP.ActiveDirectory Get-ADOrganizationalUnit { $null }
+            New-NSPADGroup -Name 'VPN Staff' -Path 'OU=X,DC=example,DC=test' -WhatIf | Should -Be 'CN=VPN Staff,OU=X,DC=example,DC=test'
+            New-NSPADOrganizationalUnit -Name 'VPN' -Path 'DC=example,DC=test' -WhatIf | Should -Be 'OU=VPN,DC=example,DC=test'
+            Mock -ModuleName NSP.ActiveDirectory New-GPLink { }
+            New-NSPADGpoLink -GpoName 'Test GPO' -TargetDN 'DC=x' -WhatIf
+            New-NSPADVpnGroupScaffold -Plan (Get-NSPADScaffoldPlan -ClientAnswers $null -BaseOU 'DC=example,DC=test') -WhatIf
+            $script:created.Count | Should -Be 0
+            Should -Invoke -ModuleName NSP.ActiveDirectory New-GPLink -Times 0 -Exactly
+        }
+
+        It 'every exported command that changes AD or files supports -WhatIf' {
+            foreach ($n in 'New-NSPADOrganizationalUnit', 'New-NSPADGroup', 'Add-NSPADGroupMember', 'New-NSPADAutoEnrollGpo', 'New-NSPADGpoLink', 'New-NSPADWmiFilter', 'Install-NSPADPrerequisite', 'Install-NSPADWmiFilterModule', 'New-NSPADVpnGroupScaffold', 'Export-NSPADVpnInventory', 'New-NSPADShim') {
+                (Get-Command $n).Parameters.ContainsKey('WhatIf') | Should -BeTrue -Because "$n changes AD or writes files"
+            }
         }
     }
 

@@ -6,8 +6,9 @@ function Install-NSPADPrerequisite {
     .EXAMPLE
         Set-NSPDryRun -Enabled $false; Install-NSPADPrerequisite
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param()
+    if (-not $PSCmdlet.ShouldProcess($env:COMPUTERNAME, 'Install the missing Active Directory / Group Policy tools')) { return }
     Use-NSPADDependency
 
     $isServer = $true

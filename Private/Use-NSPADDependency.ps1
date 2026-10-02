@@ -3,7 +3,7 @@ function Use-NSPADDependency {
     # Pure functions (plans, filter tables, inventory helpers) never call this, so they work on a
     # bare host. Returns immediately once the modules are loaded.
     param([switch]$Console, [switch]$Bootstrap)
-    Import-NSPToolkitModule -Name NSP.Toolkit -MinimumVersion 0.1.0
+    Import-NSPToolkitModule -Name NSP.Toolkit -MinimumVersion 0.1.1
     if ($Console) { Import-NSPToolkitModule -Name NSP.Console -MinimumVersion 0.1.2 }
     if ($Bootstrap) { Import-NSPToolkitModule -Name NSP.Bootstrap -MinimumVersion 0.1.3 }
 }

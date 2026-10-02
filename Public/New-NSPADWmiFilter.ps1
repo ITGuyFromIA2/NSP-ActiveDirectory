@@ -12,9 +12,10 @@ function New-NSPADWmiFilter {
     .EXAMPLE
         Get-NSPADWellKnownWmiFilter | ForEach-Object { New-NSPADWmiFilter -Filter $_ }
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param([Parameter(Mandatory, ValueFromPipeline)]$Filter)
     process {
+        if (-not $PSCmdlet.ShouldProcess("$($Filter.Name)", 'Create the WMI filter if it is missing')) { return }
         Use-NSPADDependency
         Assert-NSPADCommand Get-GPWmiFilter -ModuleHint 'BW.Utils.GroupPolicy.WMIFilter (Install-NSPADWmiFilterModule)'
         $existing = Get-GPWmiFilter -Name $Filter.Name -ErrorAction SilentlyContinue

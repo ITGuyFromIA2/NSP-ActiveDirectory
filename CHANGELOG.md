@@ -3,6 +3,15 @@
 All notable changes to NSP.ActiveDirectory are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.3
+
+- From the 2026-10-02 review: every exported command that changes AD or writes files supports
+  `-WhatIf` / `-Confirm` (on top of NSP.Toolkit's dry-run mode, which still governs the dashboard).
+  `New-NSPADGroup` / `New-NSPADOrganizationalUnit -WhatIf` still return the DN they would create.
+- `New-NSPADGpoLink` no longer swallows a failed link: only the already-linked case is tolerated.
+- Needs NSP.Toolkit 0.1.1. The sibling loader announces Gallery installs and is generated from
+  NSP-Toolkit's canonical copy; the module loader dot-sources files in name order.
+
 ## 0.1.2
 
 - The hand-back folder now opens in Explorer for real. Explorer runs as the desktop user without

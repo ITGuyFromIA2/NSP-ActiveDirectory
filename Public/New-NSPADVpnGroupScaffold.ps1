@@ -7,9 +7,10 @@ function New-NSPADVpnGroupScaffold {
     .EXAMPLE
         Get-NSPADScaffoldPlan -ClientAnswers $answers -BaseOU $ou | New-NSPADVpnGroupScaffold
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param([Parameter(Mandatory, ValueFromPipeline)]$Plan)
     process {
+        if (-not $PSCmdlet.ShouldProcess('VPN group scaffold', 'Create the OUs and groups in the plan that are missing')) { return }
         New-NSPADOrganizationalUnit -Name 'VPNGroups' -Path $Plan.BaseOU -Description 'VPN group scaffold (NSP.ActiveDirectory)' | Out-Null
         New-NSPADGroup -Name $Plan.MainGroupName -Path $Plan.VpnGroupsOU -Description 'Main VPN user group (NSP.ActiveDirectory)' | Out-Null
         New-NSPADOrganizationalUnit -Name 'FWRules' -Path $Plan.VpnGroupsOU -Description 'VPNFW purpose groups (NSP.ActiveDirectory)' | Out-Null

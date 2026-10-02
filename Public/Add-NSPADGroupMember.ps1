@@ -6,11 +6,12 @@ function Add-NSPADGroupMember {
     .EXAMPLE
         Add-NSPADGroupMember -GroupIdentity 'CN=VPNFW_DNS_Group,OU=FWRules,...' -MemberIdentity 'CN=VPN_Staff,...'
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)][string]$GroupIdentity,
         [Parameter(Mandatory)][string]$MemberIdentity
     )
+    if (-not $PSCmdlet.ShouldProcess("$GroupIdentity", "Add member '$MemberIdentity' if it is not one already")) { return }
     Use-NSPADDependency
     Assert-NSPADCommand Get-ADGroupMember
     $already = @(Get-ADGroupMember -Identity $GroupIdentity -ErrorAction SilentlyContinue | Where-Object {

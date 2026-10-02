@@ -10,7 +10,7 @@ function New-NSPADGroup {
     .EXAMPLE
         New-NSPADGroup -Name 'VPN_Staff' -Path 'OU=VPNGroups,DC=example,DC=com' -Description 'VPN users'
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -20,6 +20,7 @@ function New-NSPADGroup {
         [string]$SamAccountName,
         [string]$Description
     )
+    if (-not $PSCmdlet.ShouldProcess("CN=$Name,$Path", 'Create the group if it is missing')) { return "CN=$Name,$Path" }
     Use-NSPADDependency
     Assert-NSPADCommand Get-ADGroup
     $sam = if ($SamAccountName) { $SamAccountName } else { $Name -replace '[^A-Za-z0-9_\-]', '' }

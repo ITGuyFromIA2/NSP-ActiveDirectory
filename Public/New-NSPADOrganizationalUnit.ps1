@@ -6,13 +6,14 @@ function New-NSPADOrganizationalUnit {
     .EXAMPLE
         New-NSPADOrganizationalUnit -Name VPNGroups -Path 'OU=Clients,DC=example,DC=com'
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][string]$Path,
         [string]$Description
     )
+    if (-not $PSCmdlet.ShouldProcess("OU=$Name,$Path", 'Create the organizational unit if it is missing')) { return "OU=$Name,$Path" }
     Use-NSPADDependency
     Assert-NSPADCommand Get-ADOrganizationalUnit
     $dn = "OU=$Name,$Path"

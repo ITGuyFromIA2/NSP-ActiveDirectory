@@ -1,8 +1,9 @@
 function Install-NSPADWmiFilterModule {
     <#
     .SYNOPSIS
-        Makes sure the third-party BW.Utils.GroupPolicy.WMIFilter module is installed, patched and
-        imported. Dry-run aware (Invoke-NSPStep).
+        NO LONGER NEEDED (0.1.4): New-NSPADWmiFilter / Get-NSPADWmiFilter / Set-NSPADGpoWmiFilter work
+        through ADSI. Kept for scripts that still call the BW.Utils.GroupPolicy.WMIFilter cmdlets
+        directly: makes sure that module is installed, patched and imported. Dry-run aware.
     .DESCRIPTION
         The installed module needs two fixes to work here ([DirectoryContext] fully qualified; the
         domain read from WMI instead of USERDNSDOMAIN). The patch is applied only when not already

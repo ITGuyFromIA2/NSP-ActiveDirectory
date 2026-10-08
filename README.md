@@ -28,8 +28,16 @@ in `%ProgramData%\NSP\Toolkit\AD\Answers`.
 | `New-NSPADOrganizationalUnit` / `New-NSPADGroup` / `Add-NSPADGroupMember` | Idempotent AD primitives (create only what is missing). |
 | `Get-NSPADOrganizationalUnitChild` / `Select-NSPADOrganizationalUnit` | One-level OU listing and the interactive OU browser. |
 | `Get-NSPADAutoEnrollGpoPlan` / `New-NSPADAutoEnrollGpo` / `New-NSPADGpoLink` | Dedicated certificate auto-enrollment GPO (AEPolicy 7), linked at the domain root. |
-| `Get-NSPADWellKnownWmiFilter` / `Install-NSPADWmiFilterModule` / `New-NSPADWmiFilter` | The six NSP_AT WMI filters. |
+| `Get-NSPADWellKnownWmiFilter` / `New-NSPADWmiFilter` / `Get-NSPADWmiFilter` / `Set-NSPADGpoWmiFilter` | WMI filters, written and read straight through ADSI (no third-party module): the six NSP_AT filters, and applying one to a GPO. `Install-NSPADWmiFilterModule` (BW.Utils) is no longer needed. |
 | `Get-NSPADVpnInventory` / `Export-NSPADVpnInventory` | Read-only VPN documentation inventory (groups, nesting, users, client-auth templates, TameMyCerts OU stamps). Export writes an AD Response hand-off for the Orchestrator's Inbox, or `-Format Legacy` for NSP.FortiGate's `-AdInventory`. |
+| `Compare-NSPADGroupMembership` / `Test-NSPADUserGroupMembership` | Who is in group A, B or both; is a user in each of these groups. Read-only. |
+| `Copy-NSPADUserGroupMembership` | Give user B the groups user A is in. |
+| `Remove-NSPADDisabledUserGroupMembership` | Park disabled accounts in a holding group (as their primary group) and remove their other memberships. ConfirmImpact High. |
+| `Export-NSPADGroupMembershipReport` | One CSV per group, previous reports archived and purged after a retention period. |
+| `Get-NSPADGpoCatalog` / `Export-NSPADGpoBackup` / `Import-NSPADGpoBackup` | A catalog of portable GPO backups (placeholder domain names) - list it, add to it (`-Genericize`), and import from it into this domain, optionally with a WMI filter and a domain-root link. Import works on a copy; the catalog is never changed. |
+
+Every command that changes AD, GPOs or files supports `-WhatIf` / `-Confirm`. The AD Manager
+dashboard's steps also honour NSP.Toolkit's dry-run mode (on by default there).
 
 ## Answers
 

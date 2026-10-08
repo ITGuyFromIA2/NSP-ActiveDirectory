@@ -3,6 +3,18 @@
 All notable changes to NSP.ActiveDirectory are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.4
+
+- **WMI filters through ADSI** - `New-NSPADWmiFilter` writes the msWMI-Som object directly; new
+  `Get-NSPADWmiFilter` and `Set-NSPADGpoWmiFilter`. The patched third-party BW.Utils module (and its
+  system-only-change toggling) is no longer used; `Install-NSPADWmiFilterModule` stays for scripts
+  that call BW.Utils themselves. Needs one live check on a domain controller.
+- **Group tools** (from the PoSHRepo ADGroups scripts): `Compare-NSPADGroupMembership`,
+  `Test-NSPADUserGroupMembership`, `Copy-NSPADUserGroupMembership`,
+  `Remove-NSPADDisabledUserGroupMembership`, `Export-NSPADGroupMembershipReport`.
+- **GPO catalog and transplant** (from ExportGPO / ReplaceImportGPO): `Get-NSPADGpoCatalog`,
+  `Export-NSPADGpoBackup -Genericize`, `Import-NSPADGpoBackup`. Import fills in this domain's names
+  on a temporary copy - the zip-era script rewrote the catalog's own files.
 ## 0.1.3
 
 - From the 2026-10-02 review: every exported command that changes AD or writes files supports

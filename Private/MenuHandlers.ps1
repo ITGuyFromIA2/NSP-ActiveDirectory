@@ -147,7 +147,7 @@ function Invoke-NSPADMenuWmiFilters {
     foreach ($f in $filters) { Write-Host "    $($f.Name)" -ForegroundColor Gray }
     if (-not (Read-NSPConfirm -Prompt "`nProceed?" -DefaultYes)) { Wait-NSPADReturn; return }
     try {
-        Install-NSPADWmiFilterModule
+        # Written through ADSI (0.1.4) - the BW.Utils module Install-NSPADWmiFilterModule fetched isn't needed.
         foreach ($f in $filters) { New-NSPADWmiFilter -Filter $f }
         Write-NSPConsoleLine "`n  Done." -Role Success
     } catch {

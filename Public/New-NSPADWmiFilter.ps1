@@ -1,51 +1,34 @@
 function New-NSPADWmiFilter {
     <#
     .SYNOPSIS
-        Creates one WMI filter, or updates it when its expression or description has drifted;
-        does nothing when it already matches. Dry-run aware (Invoke-NSPStep).
+        Creates one WMI filter, or updates it when its queries or description have drifted; does
+        nothing when it already matches. Dry-run aware (Invoke-NSPStep) and supports -WhatIf.
     .DESCRIPTION
-        Needs Install-NSPADWmiFilterModule first. The write is bracketed by
-        Set-ADSystemOnlyChange -Enable/-Disable: msWMI-Som is a system-only class and the write fails
-        without it.
+        Writes the msWMI-Som object straight through ADSI (WmiFilterHelpers.ps1) - no third-party
+        module and no Set-ADSystemOnlyChange toggling; Install-NSPADWmiFilterModule is no longer needed.
     .PARAMETER Filter
-        One row from Get-NSPADWellKnownWmiFilter, or any object with Name, Expression, Description.
+        One row from Get-NSPADWellKnownWmiFilter, or any object with Name, Expression (one or more
+        WQL strings), Description.
     .EXAMPLE
-        Get-NSPADWellKnownWmiFilter | ForEach-Object { New-NSPADWmiFilter -Filter $_ }
+        Get-NSPADWellKnownWmiFilter | New-NSPADWmiFilter
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param([Parameter(Mandatory, ValueFromPipeline)]$Filter)
     process {
         if (-not $PSCmdlet.ShouldProcess("$($Filter.Name)", 'Create the WMI filter if it is missing')) { return }
         Use-NSPADDependency
-        Assert-NSPADCommand Get-GPWmiFilter -ModuleHint 'BW.Utils.GroupPolicy.WMIFilter (Install-NSPADWmiFilterModule)'
-        $existing = Get-GPWmiFilter -Name $Filter.Name -ErrorAction SilentlyContinue
-        $expressionMatches = $false
-        if ($existing) {
-            $existingExpr = @($existing.Filters.filter)
-            $wantExpr = @($Filter.Expression)
-            $diff = Compare-Object -ReferenceObject $existingExpr -DifferenceObject $wantExpr -SyncWindow 0
-            $expressionMatches = (-not $diff) -and ($existing.Description -eq $Filter.Description)
-        }
-        if ($expressionMatches) {
+        $domain = Get-ADDomain -ErrorAction Stop
+        $domainDn = "$($domain.DistinguishedName)"
+        $want = @($Filter.Expression)
+        $existing = Get-NSPADWmiSomEntry -DomainDN $domainDn | Where-Object { $_.Name -eq $Filter.Name } | Select-Object -First 1
+        if ($existing -and -not (Compare-Object -ReferenceObject @($existing.Query) -DifferenceObject $want -SyncWindow 0) -and "$($existing.Description)".Trim() -eq "$($Filter.Description)".Trim()) {
             Write-Host "  WMI filter '$($Filter.Name)' already exists and matches - skipping." -ForegroundColor Gray
             return
         }
         $verb = if ($existing) { 'Update' } else { 'Create' }
-        $cmdVerb = if ($existing) { 'Set' } else { 'New' }
+        $dn = if ($existing) { $existing.DN } else { $null }
         Invoke-NSPStep -Description "$verb WMI filter '$($Filter.Name)'" `
-            -Commands @("$cmdVerb-GPWmiFilter -Name '$($Filter.Name)' -Filters <from New-WmiFilterList> -Description '$($Filter.Description)'") `
-            -Action {
-                Set-ADSystemOnlyChange -Enable -ComputerName $env:COMPUTERNAME
-                try {
-                    $newFilterList = New-WmiFilterList -Filter $Filter.Expression
-                    if ($existing) {
-                        Set-GPWmiFilter -Name $Filter.Name -Filters $newFilterList -Description $Filter.Description -Confirm:$false
-                    } else {
-                        New-GPWmiFilter -Name $Filter.Name -Filters $newFilterList -Description $Filter.Description
-                    }
-                } finally {
-                    Set-ADSystemOnlyChange -Disable -ComputerName $env:COMPUTERNAME
-                }
-            } | Out-Null
+            -Commands @("[ADSI] msWMI-Som under CN=SOM,CN=WMIPolicy,CN=System,$domainDn  (msWMI-Parm2 = $(ConvertTo-NSPADWmiParm2 -Query $want))") `
+            -Action { Save-NSPADWmiSomEntry -DomainDN $domainDn -DnsRoot "$($domain.DNSRoot)" -Name $Filter.Name -Description $Filter.Description -Query $want -DN $dn } | Out-Null
     }
 }

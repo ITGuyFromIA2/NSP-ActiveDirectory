@@ -1,6 +1,6 @@
 @{
     RootModule        = 'NSP.ActiveDirectory.psm1'
-    ModuleVersion     = '0.1.3'
+    ModuleVersion     = '0.1.4'
     GUID              = '35f1aeb4-782a-4a6a-8865-daec1be3cce6'
     Author            = 'Network Systems Plus'
     CompanyName       = 'Network Systems Plus'
@@ -14,14 +14,21 @@
 
     FunctionsToExport = @(
         'Add-NSPADGroupMember'
+        'Compare-NSPADGroupMembership'
+        'Copy-NSPADUserGroupMembership'
+        'Export-NSPADGpoBackup'
+        'Export-NSPADGroupMembershipReport'
         'Export-NSPADVpnInventory'
         'Get-NSPADAutoEnrollGpoPlan'
+        'Get-NSPADGpoCatalog'
         'Get-NSPADOrganizationalUnitChild'
         'Get-NSPADPrerequisiteStatus'
         'Get-NSPADPurposeGroupDefault'
         'Get-NSPADScaffoldPlan'
         'Get-NSPADVpnInventory'
         'Get-NSPADWellKnownWmiFilter'
+        'Get-NSPADWmiFilter'
+        'Import-NSPADGpoBackup'
         'Install-NSPADPrerequisite'
         'Install-NSPADWmiFilterModule'
         'New-NSPADAutoEnrollGpo'
@@ -31,8 +38,11 @@
         'New-NSPADShim'
         'New-NSPADVpnGroupScaffold'
         'New-NSPADWmiFilter'
+        'Remove-NSPADDisabledUserGroupMembership'
         'Select-NSPADOrganizationalUnit'
+        'Set-NSPADGpoWmiFilter'
         'Start-NSPADManager'
+        'Test-NSPADUserGroupMembership'
     )
     CmdletsToExport   = @()
     VariablesToExport = @()

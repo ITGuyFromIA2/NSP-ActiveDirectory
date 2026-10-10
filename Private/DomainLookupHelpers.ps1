@@ -28,23 +28,30 @@ function Read-NSPADRootDse {
 
 function Read-NSPADLdap {
     # One LDAP search against one DC. Returns one hashtable per result: lower-case property name ->
-    # first value (byte arrays such as objectSid stay byte arrays). -Scope Base reads one object.
+    # first value (byte arrays such as objectSid stay byte arrays), or every value for the names in
+    # -MultiValued (an array). -Scope Base reads one object (constructed attributes such as
+    # tokenGroups only come back from a Base read).
     param(
         [Parameter(Mandatory)][string]$Server,
         [Parameter(Mandatory)][string]$SearchBase,
         [string]$Filter = '(objectClass=*)',
         [Parameter(Mandatory)][string[]]$Property,
-        [ValidateSet('Base', 'OneLevel', 'Subtree')][string]$Scope = 'Subtree'
+        [ValidateSet('Base', 'OneLevel', 'Subtree')][string]$Scope = 'Subtree',
+        [string[]]$MultiValued = @()
     )
     $root = [ADSI]"LDAP://$Server/$($SearchBase -replace '/', '\/')"
     $searcher = New-Object System.DirectoryServices.DirectorySearcher($root, $Filter)
     $searcher.SearchScope = $Scope
     foreach ($name in $Property) { [void]$searcher.PropertiesToLoad.Add($name) }
+    $multi = @($MultiValued | ForEach-Object { $_.ToLowerInvariant() })
     $results = $searcher.FindAll()
     try {
         foreach ($result in $results) {
             $item = @{}
-            foreach ($name in $result.Properties.PropertyNames) { $item[$name.ToLowerInvariant()] = $result.Properties[$name][0] }
+            foreach ($name in $result.Properties.PropertyNames) {
+                $key = $name.ToLowerInvariant()
+                $item[$key] = if ($multi -contains $key) { , @($result.Properties[$name]) } else { $result.Properties[$name][0] }
+            }
             $item
         }
     } finally { $results.Dispose() }

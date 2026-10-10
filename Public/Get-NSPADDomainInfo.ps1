@@ -39,6 +39,7 @@ function Get-NSPADDomainInfo {
         DNSRoot           = [string]$crossRef['dnsroot']
         NetBIOSName       = [string]$crossRef['netbiosname']
         DistinguishedName = $domainDn
+        ConfigurationDN   = $configDn
         PDCEmulator       = if ($pdc) { $pdc } else { $null }
         Server            = $dc
     }

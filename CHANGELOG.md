@@ -9,6 +9,11 @@ All notable changes to NSP.ActiveDirectory are documented here. Versions follow
   the DC locator and plain LDAP - no AD module and no AD Web Services, so a sick DC or broken ADWS
   doesn't stop a tool that only needs these facts. The DC that answered is returned for later reads.
   From a client file-transfer job's setup, where Get-ADDomain kept failing on a bad DC.
+- gMSAs: `Get-NSPADServiceAccount` (LDAP: logon name, enabled, interval, who may retrieve the password),
+  `Test-NSPADServiceAccount` (exists, enabled, the computer allowed directly or through a group via
+  tokenGroups, installed here), `New-NSPADServiceAccount` (idempotent; checks for a usable KDS root key;
+  AES only; on the located DC) and `Install-NSPADServiceAccount`. Create and install need the AD module and
+  go through Invoke-NSPStep. `Get-NSPADDomainInfo` also returns `ConfigurationDN`.
 
 ## 0.1.5
 

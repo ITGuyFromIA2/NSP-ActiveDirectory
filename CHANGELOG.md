@@ -3,6 +3,13 @@
 All notable changes to NSP.ActiveDirectory are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.6
+
+- `Get-NSPADDomainInfo` and `Get-NSPADComputer`: domain names, DN, PDC emulator, and computer accounts over
+  the DC locator and plain LDAP - no AD module and no AD Web Services, so a sick DC or broken ADWS
+  doesn't stop a tool that only needs these facts. The DC that answered is returned for later reads.
+  From a client file-transfer job's setup, where Get-ADDomain kept failing on a bad DC.
+
 ## 0.1.5
 
 - Release routine: `tools\Publish-ToGallery.ps1` now runs `Publish-NSPModule` from NSP.RepoTools, the checks every NSP module shares (including a client-reference sweep of the Git history). No change to the module itself.

@@ -1,6 +1,6 @@
 @{
     RootModule        = 'NSP.ActiveDirectory.psm1'
-    ModuleVersion     = '0.1.5'
+    ModuleVersion     = '0.1.6'
     GUID              = '35f1aeb4-782a-4a6a-8865-daec1be3cce6'
     Author            = 'Network Systems Plus'
     CompanyName       = 'Network Systems Plus'
@@ -20,6 +20,8 @@
         'Export-NSPADGroupMembershipReport'
         'Export-NSPADVpnInventory'
         'Get-NSPADAutoEnrollGpoPlan'
+        'Get-NSPADComputer'
+        'Get-NSPADDomainInfo'
         'Get-NSPADGpoCatalog'
         'Get-NSPADOrganizationalUnitChild'
         'Get-NSPADPrerequisiteStatus'

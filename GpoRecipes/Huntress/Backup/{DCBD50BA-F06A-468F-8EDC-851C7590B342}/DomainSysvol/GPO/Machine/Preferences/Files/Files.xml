@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Files clsid="{215B2E53-57CE-475c-80FE-9EEC14635851}"><File clsid="{50BE44C8-567A-4ed1-B1D0-9234FE1F38AF}" name="HuntressInstall.ps1" status="HuntressInstall.ps1" image="2" changed="2026-10-16 12:00:00" uid="{7D3BCA91-9837-4459-9B1B-D0D4E8F0170E}"><Properties action="U" fromPath="__NSP_HUNTRESS_SCRIPT__" targetPath="C:\ProgramData\NSP\Huntress\HuntressInstall.ps1" readOnly="0" archive="1" hidden="0" suppress="0"/></File>
+</Files>

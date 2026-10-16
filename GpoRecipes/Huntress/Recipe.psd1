@@ -1,7 +1,7 @@
 @{
     Name        = 'Huntress'
-    Version     = '1'
-    Description = 'Deploys the Huntress agent to every computer: the installer script (NSP.ClientScripts HuntressInstaller) on a file share, and a GPO whose scheduled task runs it as SYSTEM from the share - at registration and at every unlock; it exits at once when the agent is installed. Each run reports back to Status\ and Transcripts\ next to the script.'
+    Version     = '2'
+    Description = 'Deploys the Huntress agent to every computer: the installer script (NSP.ClientScripts HuntressInstaller) on a file share, and a GPO that copies it to C:\ProgramData\NSP\Huntress (locked to SYSTEM and Administrators by the script) and runs that copy as SYSTEM - at registration, every unlock, startup and daily; it exits at once when the agent is installed and healthy. Each run reports back to Status\ and Transcripts\ next to the script.'
 
     # The GPO this recipe creates (or updates in place on a re-run).
     GpoName     = 'NSP - Deploy Huntress'
@@ -29,11 +29,14 @@
             AccountKey      = '{AccountKey}'
             OrganizationKey = '{OrganizationKey}'
             ReportDirectory = '{ShareRoot}'
+            # Where the GPO's Files preference copies the script (Backup\...\Files.xml targetPath).
+            LocalDirectory  = 'C:\ProgramData\NSP\Huntress'
             Company         = '{OrganizationKey}'
         }
     }
 
-    # Tokens in the GPO backup's XML and what replaces them (XML-escaped on the way in).
+    # Tokens in the GPO backup's XML and what replaces them (XML-escaped on the way in): the Files
+    # preference copies from {PayloadPath} on the share; the task runs the local copy.
     GpoTokens   = @{
         '__NSP_HUNTRESS_SCRIPT__' = '{PayloadPath}'
     }

@@ -3,6 +3,12 @@
 All notable changes to NSP.ActiveDirectory are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.8
+
+- Huntress GPO recipe v2: the GPO copies the script from the share to `C:\ProgramData\NSP\Huntress` (Files
+  preference) and the task runs that local copy, so a machine that starts off the network still installs. The script
+  limits that folder to SYSTEM and Administrators on every run. Needs NSP.ClientScripts 0.1.5.
+
 ## 0.1.7
 
 - **GPO recipes**: `Import-NSPADGpoRecipe -Recipe Huntress -Action Deploy -Scope All`, run on the client's

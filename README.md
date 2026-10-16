@@ -64,7 +64,7 @@ Re-running updates the script and the GPO in place.
 
 | Recipe | GPO | Share layout |
 |---|---|---|
-| `Huntress` | `NSP - Deploy Huntress`: a SYSTEM scheduled task (at registration and every unlock) runs `HuntressInstall.ps1` from the share; it exits at once when the agent is installed. | `HuntressInstall.ps1`, `Status\<COMPUTER>.json` (Installed / AlreadyInstalled / Failed, agent version), `Transcripts\` (one per install run) |
+| `Huntress` | `NSP - Deploy Huntress`: copies `HuntressInstall.ps1` from the share to `C:\ProgramData\NSP\Huntress` (locked to SYSTEM/Administrators by the script) and a SYSTEM task runs the local copy at registration, unlock, startup and daily; it exits at once when the agent is healthy, and re-registers an orphaned (401) or foreign one. | `HuntressInstall.ps1`, `Status\<COMPUTER>.json` (Installed / AlreadyInstalled / Failed, agent version), `Transcripts\` (one per install run) |
 
 `-FileShareRoot` and `-Values @{ OrganizationKey = ...; AccountKey = ... }` skip the questions.
 In the AD Manager dashboard it is **Deploy a GPO recipe**: it remembers the share folder and the

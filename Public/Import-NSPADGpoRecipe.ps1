@@ -59,7 +59,7 @@ function Import-NSPADGpoRecipe {
     Use-NSPADDependency -Console
     Assert-NSPADCommand Import-GPO -ModuleHint 'GroupPolicy (RSAT)'
     Assert-NSPADCommand Get-ADDomain
-    Import-NSPToolkitModule -Name NSP.ClientScripts -MinimumVersion 0.1.4
+    Import-NSPToolkitModule -Name NSP.ClientScripts -MinimumVersion 0.1.5
     $domain = Get-ADDomain -ErrorAction Stop
 
     Write-Host "`n$($r.Name) GPO recipe - $Action, scope $Scope, domain $($domain.DNSRoot)" -ForegroundColor Cyan

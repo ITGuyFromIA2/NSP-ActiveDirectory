@@ -54,19 +54,24 @@ Describe 'The Huntress recipe' {
         Test-Path -LiteralPath (Join-Path $r.BackupPath 'manifest.xml') | Should -BeTrue
     }
 
-    It 'has a GPO backup with only the scheduled task, pointing at the script token' {
+    It 'has a GPO backup that copies the script from the share token to the local folder and runs the local copy' {
         $r = Get-NSPADGpoRecipe -Name Huntress
         $files = @(Get-ChildItem -LiteralPath $r.BackupPath -Recurse -Force -File)
         foreach ($f in $files | Where-Object Extension -eq '.xml') { { [xml](Get-Content -LiteralPath $f.FullName -Raw) } | Should -Not -Throw }
-        $files.Name | Should -Not -Contain 'Files.xml'
+        $local = Join-Path $r.Payload.Parameters.LocalDirectory $r.Payload.FileName
+        $copy = ([xml](Get-Content -LiteralPath ($files | Where-Object Name -eq 'Files.xml').FullName -Raw)).Files.File.Properties
+        $copy.fromPath | Should -Be '__NSP_HUNTRESS_SCRIPT__'
+        $copy.targetPath | Should -Be $local -Because 'the script locks down the folder the GPO copies into'
+        $copy.action | Should -Be 'U'
         $task = Get-Content -LiteralPath ($files | Where-Object Name -eq 'ScheduledTasks.xml').FullName -Raw
-        $task | Should -Match '-File &quot;__NSP_HUNTRESS_SCRIPT__&quot;'
+        $task | Should -Match ([regex]::Escape("-File &quot;$local&quot;"))
+        $task | Should -Not -Match '__NSP_HUNTRESS_SCRIPT__' -Because 'the task runs the local copy, not the share'
         $task | Should -Match 'NT AUTHORITY\\System'
         foreach ($trigger in 'RegistrationTrigger', 'SessionStateChangeTrigger', 'BootTrigger', 'CalendarTrigger') { $task | Should -Match "<$trigger>" -Because 'servers nobody logs into retry at startup and daily' }
         $task | Should -Match '<WakeToRun>false</WakeToRun>'
         $backup = Get-Content -LiteralPath ($files | Where-Object Name -eq 'Backup.xml').FullName -Raw
-        $backup | Should -Not -Match 'Preferences\\Files'
-        $backup | Should -Not -Match '7150F9BF-48AD-4DA4-A49C-29EF4A8369BA' -Because 'the Files preference extension is gone'
+        $backup | Should -Match ([regex]::Escape('Preferences\Files\Files.xml'))
+        $backup | Should -Match ([regex]::Escape('[{7150F9BF-48AD-4DA4-A49C-29EF4A8369BA}{3BAE7E51-E3F4-41D0-853D-9BB9FD47605F}]')) -Because 'the Files extension must be registered or clients skip Files.xml'
         foreach ($f in $files) {
             Get-Content -LiteralPath $f.FullName -Raw | Should -Not -Match 'C:\\Admin' -Because "$($f.Name) should carry no old local paths"
         }
@@ -134,6 +139,7 @@ Describe 'Import-NSPADGpoRecipe' {
         $script:task = $null
         Mock -ModuleName NSP.ActiveDirectory Import-GPO {
             $script:task = Get-Content -LiteralPath (Get-ChildItem -LiteralPath $Path -Recurse -Filter 'ScheduledTasks.xml').FullName -Raw
+            $script:copy = Get-Content -LiteralPath (Get-ChildItem -LiteralPath $Path -Recurse -Filter 'Files.xml').FullName -Raw
             $script:importTarget = $TargetName
         }
         Mock -ModuleName NSP.ActiveDirectory Get-GPO { [pscustomobject]@{ DisplayName = $Name } }
@@ -153,7 +159,9 @@ Describe 'Import-NSPADGpoRecipe' {
         $payload.Text | Should -Match ([regex]::Escape("`$ReportDirectory       = '\\fileserver\GPO_Share`$\Huntress'"))
         $payload.Text | Should -Match ([regex]::Escape("[string]`$OrganizationKey = 'Fabrikam'"))
         $payload.Text | Should -Match $AccountKey
-        $task | Should -Match ([regex]::Escape('-File &quot;\\fileserver\GPO_Share$\Huntress\HuntressInstall.ps1&quot;'))
+        $copy | Should -Match ([regex]::Escape('fromPath="\\fileserver\GPO_Share$\Huntress\HuntressInstall.ps1"')) -Because 'the GPO copies from the share'
+        $task | Should -Match ([regex]::Escape('-File &quot;C:\ProgramData\NSP\Huntress\HuntressInstall.ps1&quot;')) -Because 'and runs the local copy'
+        $payload.Text | Should -Match ([regex]::Escape("`$LocalDirectory        = 'C:\ProgramData\NSP\Huntress'"))
         $importTarget | Should -Be 'NSP - Deploy Huntress'
         Should -Invoke -ModuleName NSP.ActiveDirectory New-GPLink -Times 1 -ParameterFilter { $Name -eq 'NSP - Deploy Huntress' -and $Target -eq 'DC=fabrikam,DC=local' }
         $r.Linked | Should -BeTrue

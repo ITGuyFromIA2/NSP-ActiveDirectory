@@ -16,6 +16,10 @@ function Import-NSPADGpoBackup {
         A WMI filter (already in this domain - see New-NSPADWmiFilter) to apply to the GPO.
     .PARAMETER LinkAtDomainRoot
         Link the GPO at the domain root (New-NSPADGpoLink - skipped when already linked).
+    .PARAMETER Replace
+        Extra literal find -> replace pairs applied to every .xml file in the copy (preference
+        files included), after the domain names - for tokens a template carries, such as a
+        file-share path. Values are inserted as-is, so XML-escape them.
     .EXAMPLE
         Get-NSPADGpoCatalog -Path '\\fileserver\GPO' | Where-Object DisplayName -like '*TLS 1.2*' |
             ForEach-Object { Import-NSPADGpoBackup -Path $_.Path -WmiFilterName 'NSP_AT - All Servers' -LinkAtDomainRoot }
@@ -26,7 +30,8 @@ function Import-NSPADGpoBackup {
         [Parameter(Mandatory, ValueFromPipelineByPropertyName)][string]$Path,
         [string]$TargetName,
         [string]$WmiFilterName,
-        [switch]$LinkAtDomainRoot
+        [switch]$LinkAtDomainRoot,
+        [Collections.IDictionary]$Replace
     )
     process {
         Assert-NSPADCommand Import-GPO -ModuleHint 'GroupPolicy (RSAT)'
@@ -44,6 +49,7 @@ function Import-NSPADGpoBackup {
             if (-not $PSCmdlet.ShouldProcess($name, "Import GPO backup '$($backup.DisplayName)'$(if ($WmiFilterName) { ", WMI filter '$WmiFilterName'" })$(if ($LinkAtDomainRoot) { ', link at the domain root' })")) { return }
 
             Convert-NSPADGpoBackupFolder -BackupRoot $backup.BackupRoot -From $script:NSPADGpoPlaceholder -To (Get-NSPADGpoDomainNames)
+            if ($Replace -and $Replace.Count) { Convert-NSPADGpoBackupToken -BackupRoot $backup.BackupRoot -Replace $Replace }
             $null = Import-GPO -BackupId $backup.BackupId -Path $backup.BackupRoot -TargetName $name -CreateIfNeeded -ErrorAction Stop
             if (-not (Get-GPO -Name $name -ErrorAction SilentlyContinue)) { throw "GPO '$name' was not imported." }
             if ($WmiFilterName) { Set-NSPADGpoWmiFilter -GpoName $name -WmiFilterName $WmiFilterName }

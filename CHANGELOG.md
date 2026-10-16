@@ -3,6 +3,24 @@
 All notable changes to NSP.ActiveDirectory are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.7
+
+- **GPO recipes**: `Import-NSPADGpoRecipe -Recipe Huntress -Action Deploy -Scope All`, run on the client's
+  DC, asks for the share folder and the Huntress keys, then sets up the share folder and its report
+  folders (Kickstart-style permissions), writes the installer script (NSP.ClientScripts
+  `HuntressInstaller`, readable by computers and admins only), imports `NSP - Deploy Huntress` pointing
+  at it and links it at the domain root. `Get-NSPADGpoRecipe` lists recipes. Needs NSP.ClientScripts 0.1.4.
+  In the dashboard: **Deploy a GPO recipe** (remembers the share folder and organization key, never the
+  account key; DRY RUN previews with `-WhatIf`).
+- The Huntress GPO is the 2024 `GPO-HuntressDeploy.zip`, cleaned up: the task runs the script from the
+  share instead of a Files copy to `C:\Admin`, the log push-back item is gone (the script reports to the
+  share itself), and the previous client's server, domain and account names are gone.
+- The Huntress task also runs **at startup (5 min delay) and daily (random 4 h delay)**, so servers nobody logs
+  into retry, and no longer wakes the computer. `Import-NSPADGpoRecipe` reads the domain-root link back from AD
+  instead of trusting `Import-NSPADGpoBackup`'s `Linked` (see the backlog's dry-run link bug).
+- `Import-NSPADGpoBackup -Replace`: extra find -> replace pairs over every XML file in the copy,
+  preference files included.
+
 ## 0.1.6
 
 - `Get-NSPADDomainInfo` and `Get-NSPADComputer`: domain names, DN, PDC emulator, and computer accounts over

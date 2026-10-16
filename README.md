@@ -36,10 +36,42 @@ in `%ProgramData%\NSP\Toolkit\AD\Answers`.
 | `Copy-NSPADUserGroupMembership` | Give user B the groups user A is in. |
 | `Remove-NSPADDisabledUserGroupMembership` | Park disabled accounts in a holding group (as their primary group) and remove their other memberships. ConfirmImpact High. |
 | `Export-NSPADGroupMembershipReport` | One CSV per group, previous reports archived and purged after a retention period. |
-| `Get-NSPADGpoCatalog` / `Export-NSPADGpoBackup` / `Import-NSPADGpoBackup` | A catalog of portable GPO backups (placeholder domain names) - list it, add to it (`-Genericize`), and import from it into this domain, optionally with a WMI filter and a domain-root link. Import works on a copy; the catalog is never changed. |
+| `Get-NSPADGpoCatalog` / `Export-NSPADGpoBackup` / `Import-NSPADGpoBackup` | A catalog of portable GPO backups (placeholder domain names) - list it, add to it (`-Genericize`), and import from it into this domain, optionally with a WMI filter and a domain-root link. Import works on a copy; the catalog is never changed. `-Replace` fills a template's own tokens (e.g. a share path) in its preference XML. |
+| `Get-NSPADGpoRecipe` / `Import-NSPADGpoRecipe` | Ready-made GPO deployments, run on the client's DC: share folder + report folders, the payload script (NSP.ClientScripts), the GPO pointing at it, and the link - see below. |
 
 Every command that changes AD, GPOs or files supports `-WhatIf` / `-Confirm`. The AD Manager
 dashboard's steps also honour NSP.Toolkit's dry-run mode (on by default there).
+
+## GPO recipes
+
+A recipe (`GpoRecipes\<Name>\Recipe.psd1` + a portable GPO backup) is a whole deployment. On the
+client's DC, as a domain admin:
+
+```powershell
+Import-NSPADGpoRecipe -Recipe Huntress -Action Deploy -Scope All
+```
+
+It asks for the share folder and the recipe's values (Huntress: organization key, account key -
+masked), shows what it will do, and after one confirmation:
+
+1. creates the share folder (its parent share must exist) and report folders, Kickstart-style:
+   Authenticated Users read the folder (inheritance broken, Users removed) and may write in the
+   report folders;
+2. writes the script there, readable only by SYSTEM, administrators, domain computers and DCs;
+3. imports the GPO pointing at the script and links it at the domain root.
+
+Re-running updates the script and the GPO in place.
+
+| Recipe | GPO | Share layout |
+|---|---|---|
+| `Huntress` | `NSP - Deploy Huntress`: a SYSTEM scheduled task (at registration and every unlock) runs `HuntressInstall.ps1` from the share; it exits at once when the agent is installed. | `HuntressInstall.ps1`, `Status\<COMPUTER>.json` (Installed / AlreadyInstalled / Failed, agent version), `Transcripts\` (one per install run) |
+
+`-FileShareRoot` and `-Values @{ OrganizationKey = ...; AccountKey = ... }` skip the questions.
+In the AD Manager dashboard it is **Deploy a GPO recipe**: it remembers the share folder and the
+non-secret values (Huntress: the organization key) per recipe in the AD answers - never the
+account key, which is asked for masked every time - and in DRY RUN it runs with `-WhatIf` (asks everything, changes nothing) - switch to APPLY
+to deploy.
+Only `-Action Deploy` and `-Scope All` exist so far.
 
 ## Answers
 

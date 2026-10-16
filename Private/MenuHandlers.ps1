@@ -156,6 +156,51 @@ function Invoke-NSPADMenuWmiFilters {
     Wait-NSPADReturn
 }
 
+function Invoke-NSPADMenuGpoRecipe {
+    # Import-NSPADGpoRecipe turns dry run off for its own confirmed run, so the dashboard's DRY RUN
+    # is honoured here with -WhatIf instead: it asks everything and shows what it would do.
+    Write-NSPADScreen 'Deploy a GPO recipe'
+    if (-not (Get-Command Get-GPO -ErrorAction SilentlyContinue)) {
+        Write-NSPConsoleLine '  GroupPolicy module not available - run menu 1 (Install RSAT) first.' -Role Error
+        Wait-NSPADReturn; return
+    }
+    $recipes = @(Get-NSPADGpoRecipe)
+    $pick = Read-NSPMenu -Prompt 'Recipe' -Choices @($recipes | ForEach-Object { [pscustomobject]@{ Label = "$($_.Name) - $($_.GpoName)"; Value = $_.Name; Help = $_.Description } })
+    if ($null -eq $pick) { return }
+    $recipe = $recipes | Where-Object Name -eq $pick
+
+    # The share folder and the recipe's non-secret values (Huntress: the organization key) are
+    # remembered per recipe in this server's AD answers. Secret values (the account key) are never
+    # saved - Import-NSPADGpoRecipe asks for them, masked, every time.
+    if (-not $script:ADAnswers) { $script:ADAnswers = [pscustomobject]@{} }
+    $remembered = {
+        param([string]$Name, [string]$Prompt, [string]$Pattern)
+        $field = "GpoRecipe_$($recipe.Name)_$Name"
+        $saved = if ($script:ADAnswers.PSObject.Properties[$field]) { [string]$script:ADAnswers.$field } else { '' }
+        while ($true) {
+            $value = (Read-NSPNonEmpty -Prompt $Prompt -CurrentValue $saved).Trim()
+            if ($Name -eq 'ShareRoot') { $value = $value.TrimEnd('\') }
+            if (-not $Pattern -or $value -match $Pattern) { break }
+            Write-NSPConsoleLine '  That value is not valid - try again.' -Role Warning
+        }
+        $script:ADAnswers | Add-Member -NotePropertyName $field -NotePropertyValue $value -Force
+        $value
+    }
+    $share = & $remembered 'ShareRoot' "Deployment folder on a file share (e.g. \\fileserver\GPO_Share`$\$($recipe.ShareFolder))" $script:NSPADUncPattern
+    $values = @{}
+    foreach ($p in @($recipe.Prompts | Where-Object { -not $_.Secret })) { $values[$p.Name] = & $remembered $p.Name $p.Prompt $p.Pattern }
+
+    $dry = Get-NSPDryRun
+    if ($dry) { Write-NSPConsoleLine "`n  DRY RUN: shows what it would do and changes nothing. Press D on the menu to switch to APPLY, then deploy." -Role Heading }
+    try {
+        $result = Import-NSPADGpoRecipe -Recipe $recipe.Name -Action Deploy -Scope All -FileShareRoot $share -Values $values -WhatIf:$dry
+        if ($result) { Write-NSPConsoleLine "`n  Deployed '$($result.GpoName)' - reports in $($result.ReportFolders -join ', ')." -Role Success }
+    } catch {
+        Write-NSPConsoleLine "`n  ERROR: $($_.Exception.Message)" -Role Error
+    }
+    Wait-NSPADReturn
+}
+
 function Invoke-NSPADMenuVpnInventory {
     Write-NSPADScreen 'Export VPN documentation inventory (read-only)'
     Write-NSPConsoleLine '  Collects VPN groups (members, nesting, SIDs), client-auth certificate templates' -Role Muted

@@ -2,7 +2,7 @@ function Start-NSPADManager {
     <#
     .SYNOPSIS
         The AD Manager dashboard: RSAT, VPN group/OU scaffold, group nesting, auto-enrollment GPO,
-        WMI filters and the VPN inventory export, with DRY RUN on by default.
+        WMI filters, the VPN inventory export and GPO recipes (Huntress), with DRY RUN on by default.
 
     .DESCRIPTION
         Relaunches elevated if needed. Answers are kept in the AD work folder
@@ -70,6 +70,7 @@ function Start-NSPADManager {
         [pscustomobject]@{ Label = 'Push the certificate auto-enrollment GPO'; Value = 'Gpo' }
         [pscustomobject]@{ Label = 'Stand up the well-known WMI filters'; Value = 'Wmi' }
         [pscustomobject]@{ Label = 'Export VPN documentation inventory (read-only)'; Value = 'Inventory'; Help = 'Hand-off file for the Orchestrator VPN report.' }
+        [pscustomobject]@{ Label = "Deploy a GPO recipe ($(@(Get-NSPADGpoRecipe).Name -join ', '))"; Value = 'Recipe'; Help = 'Share folder with report folders, the script, and the GPO linked at the domain root.' }
         [pscustomobject]@{ Key = 'D'; Label = 'Toggle DRY RUN / APPLY'; Value = 'DryRun' }
         [pscustomobject]@{ Key = 'L'; Label = 'Clean up old AD-Manager (zip) files'; Value = 'Legacy' }
     )
@@ -94,6 +95,7 @@ function Start-NSPADManager {
                 'Gpo' { Invoke-NSPADMenuAutoEnrollGpo }
                 'Wmi' { Invoke-NSPADMenuWmiFilters }
                 'Inventory' { Invoke-NSPADMenuVpnInventory }
+                'Recipe' { Invoke-NSPADMenuGpoRecipe }
                 'Legacy' { Invoke-NSPADMenuLegacyCleanup }
                 'DryRun' {
                     if (Get-NSPDryRun) {

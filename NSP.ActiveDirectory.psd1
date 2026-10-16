@@ -1,11 +1,11 @@
 @{
     RootModule        = 'NSP.ActiveDirectory.psm1'
-    ModuleVersion     = '0.1.6'
+    ModuleVersion     = '0.1.7'
     GUID              = '35f1aeb4-782a-4a6a-8865-daec1be3cce6'
     Author            = 'Network Systems Plus'
     CompanyName       = 'Network Systems Plus'
     Copyright         = '(c) Network Systems Plus. All rights reserved.'
-    Description       = 'Active Directory and Group Policy for NSP VPN deployments: VPN group/OU scaffold, group nesting, certificate auto-enrollment GPO, WMI filters, read-only VPN inventory, and the AD Manager dashboard (Start-NSPADManager). Windows PowerShell 5.1 compatible.'
+    Description       = 'Active Directory and Group Policy for NSP VPN deployments: VPN group/OU scaffold, group nesting, certificate auto-enrollment GPO, WMI filters, read-only VPN inventory, GPO recipes (Huntress), and the AD Manager dashboard (Start-NSPADManager). Windows PowerShell 5.1 compatible.'
 
     # 5.1 is the floor for every NSP toolkit, and the module must import on a bare 5.1 host -
     # sibling NSP modules are loaded on first use (Private\Import-NSPToolkitModule.ps1), never
@@ -23,6 +23,7 @@
         'Get-NSPADComputer'
         'Get-NSPADDomainInfo'
         'Get-NSPADGpoCatalog'
+        'Get-NSPADGpoRecipe'
         'Get-NSPADOrganizationalUnitChild'
         'Get-NSPADPrerequisiteStatus'
         'Get-NSPADPurposeGroupDefault'
@@ -32,6 +33,7 @@
         'Get-NSPADWellKnownWmiFilter'
         'Get-NSPADWmiFilter'
         'Import-NSPADGpoBackup'
+        'Import-NSPADGpoRecipe'
         'Install-NSPADPrerequisite'
         'Install-NSPADServiceAccount'
         'Install-NSPADWmiFilterModule'

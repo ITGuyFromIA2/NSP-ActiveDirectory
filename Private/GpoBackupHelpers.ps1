@@ -60,17 +60,41 @@ function Convert-NSPADGpoBackupFolder {
         $files += @(Get-ChildItem -LiteralPath $guidDir.FullName -Force -File | Where-Object { $script:NSPADGpoBackupFiles -contains $_.Name })
     }
     foreach ($f in $files) {
-        $bytes = [IO.File]::ReadAllBytes($f.FullName)
-        $enc = if ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) { [Text.Encoding]::Unicode }
-               elseif ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { New-Object Text.UTF8Encoding($true) }
-               else { New-Object Text.UTF8Encoding($false) }
-        $reader = New-Object IO.StreamReader((New-Object IO.MemoryStream(, $bytes)), $enc, $true)
-        try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
-        $new = Convert-NSPADGpoBackupText -Text $text -From $From -To $To
-        if ($new -cne $text) {
-            $attrs = $f.Attributes
-            if ($attrs -band [IO.FileAttributes]::Hidden) { $f.Attributes = $attrs -band (-bnot [IO.FileAttributes]::Hidden) }
-            try { [IO.File]::WriteAllText($f.FullName, $new, $enc) } finally { $f.Attributes = $attrs }
+        Edit-NSPADGpoBackupFile -File $f -Transform { param($text) Convert-NSPADGpoBackupText -Text $text -From $From -To $To }
+    }
+}
+
+function Convert-NSPADGpoBackupToken {
+    # Literal find -> replace (case-insensitive) in every .xml file under one backup root, the
+    # {GUID}\DomainSysvol preference files included - for values a template carries as tokens (a
+    # file-share path, a script name). Values go in as-is: XML-escape them first.
+    param([Parameter(Mandatory)][string]$BackupRoot, [Parameter(Mandatory)][Collections.IDictionary]$Replace)
+    foreach ($f in @(Get-ChildItem -LiteralPath $BackupRoot -Recurse -Force -File -Filter '*.xml')) {
+        Edit-NSPADGpoBackupFile -File $f -Transform {
+            param($text)
+            foreach ($key in $Replace.Keys) {
+                if ([string]::IsNullOrEmpty([string]$key)) { continue }
+                $text = [regex]::Replace($text, [regex]::Escape([string]$key), ([string]$Replace[$key]).Replace('$', '$$'), 'IgnoreCase')
+            }
+            $text
         }
+    }
+}
+
+function Edit-NSPADGpoBackupFile {
+    # Rewrites one backup file through -Transform, keeping its encoding (Backup-GPO writes UTF-16
+    # for some files) and its Hidden attribute (bkupInfo.xml). Untouched when nothing changes.
+    param([Parameter(Mandatory)][IO.FileInfo]$File, [Parameter(Mandatory)][scriptblock]$Transform)
+    $bytes = [IO.File]::ReadAllBytes($File.FullName)
+    $enc = if ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) { [Text.Encoding]::Unicode }
+           elseif ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { New-Object Text.UTF8Encoding($true) }
+           else { New-Object Text.UTF8Encoding($false) }
+    $reader = New-Object IO.StreamReader((New-Object IO.MemoryStream(, $bytes)), $enc, $true)
+    try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    $new = [string](& $Transform $text)
+    if ($new -cne $text) {
+        $attrs = $File.Attributes
+        if ($attrs -band [IO.FileAttributes]::Hidden) { $File.Attributes = $attrs -band (-bnot [IO.FileAttributes]::Hidden) }
+        try { [IO.File]::WriteAllText($File.FullName, $new, $enc) } finally { $File.Attributes = $attrs }
     }
 }

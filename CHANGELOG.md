@@ -3,6 +3,21 @@
 All notable changes to NSP.ActiveDirectory are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.9 - 2026-11-03
+
+- Add `Get-NSPADUser`: exact identity, escaped wildcard search and paged enumeration, with the
+  `NSP.ActiveDirectory.User` output contract (GUID/SID, raw consistency-GUID bytes, proxy array,
+  enabled state and domain/DC provenance). No RSAT or ADWS required.
+- Separate explicit forest parameter sets discover active domains in the seed forest, verify
+  each domain/configuration and read full LDAP attributes from each domain's located DC.
+- Page LDAP reads by default, support optional size/server-time limits, keep binary values as
+  byte arrays and dispose LDAP resources on success and failure. Domain reads do not chase referrals.
+- Add RFC 4515 assertion escaping; only wildcard searches preserve intentionally supplied `*`.
+  Computer lookups now use the same helper.
+- Add offline regression coverage for paging, escaping/injection, typed output, multivalues,
+  domain selection and forest failures. Make the existing live-domain test opt-in; the repository
+  gate explicitly disables it. No live directory validation or Gallery publication in this change.
+
 ## 0.1.8
 
 - Huntress GPO recipe v2: the GPO copies the script from the share to `C:\ProgramData\NSP\Huntress` (Files

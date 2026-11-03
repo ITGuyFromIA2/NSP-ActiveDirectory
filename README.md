@@ -25,6 +25,7 @@ in `%ProgramData%\NSP\Toolkit\AD\Answers`.
 | `New-NSPADShim` | Write a launcher (NSP.ClientScripts ToolShim recipe), optionally carrying a client's answers. |
 | `Get-NSPADPrerequisiteStatus` / `Install-NSPADPrerequisite` | RSAT ActiveDirectory + GroupPolicy. |
 | `Get-NSPADDomainInfo` / `Get-NSPADComputer` | Domain names, DN, PDC emulator, and computer accounts over the DC locator and LDAP - no AD module or AD Web Services needed, so a sick DC or broken ADWS doesn't block them. |
+| `Get-NSPADUser` | Paged user inventory by exact identity, wildcard filter or all users; separate explicit forest scope. See user inventory below. |
 | `Get-NSPADServiceAccount` / `Test-NSPADServiceAccount` / `New-NSPADServiceAccount` / `Install-NSPADServiceAccount` | Group managed service accounts: read and readiness checks over LDAP (including "may this computer retrieve the password", through its groups); create (checks the KDS root key) and install with the AD module. |
 | `Get-NSPADScaffoldPlan` / `New-NSPADVpnGroupScaffold` / `Get-NSPADPurposeGroupDefault` | The VPN group/OU scaffold: `VPNGroups\` (main VPN group) and `VPNGroups\FWRules\` (VPNFW purpose groups), named from the client's answers or generic defaults. |
 | `New-NSPADOrganizationalUnit` / `New-NSPADGroup` / `Add-NSPADGroupMember` | Idempotent AD primitives (create only what is missing). |
@@ -86,3 +87,62 @@ The dashboard reads: `CompanyName`, `Auth_UserGroup_Value` (main VPN group), `VP
 
 Tests load the sibling checkouts (NSP-Bootstrap, NSP-Console, NSP-Toolkit, NSP-ClientScripts) and
 never touch real AD: RSAT cmdlets are stubbed and mocked, LDAP wrappers are mocked.
+
+## User inventory over LDAP
+
+`Get-NSPADUser` returns `NSP.ActiveDirectory.User` without RSAT or ADWS. These are read-only
+commands; run them against a directory only with its owner's authorization.
+
+```powershell
+$domain = Get-NSPADDomainInfo -Server 'dc01.contoso.example'
+Get-NSPADUser -Identity 'one' -DomainInfo $domain       # exact sAMAccountName
+Get-NSPADUser -Filter '*example*' -DomainInfo $domain   # all candidates, no automatic choice
+Get-NSPADUser -All -DomainInfo $domain -SearchBase 'OU=People,DC=contoso,DC=example'
+Get-NSPADUser -All -Forest -Server 'dc01.contoso.example' -PageSize 500
+```
+
+Choose exactly one of `-Identity`, `-Filter` or `-All`. Filter is a wildcard assertion value
+searched across sAMAccountName, userPrincipalName, displayName, mail and proxyAddresses. Only
+`*` acts as a wildcard. LDAP syntax, backslashes, parentheses and NUL are escaped; Identity
+treats `*` literally too. This parameter does not accept a raw LDAP filter or PowerShell expression.
+
+In domain scope, `-DomainInfo` pins the domain and DC. Without it, `-Server` selects a DC or the
+local domain locator selects one. When both are supplied, the server must resolve the same domain.
+`-SearchBase` defaults to the domain DN and must be within it. Domain searches do not chase referrals.
+`-Server` takes a DNS name, without a protocol or port.
+
+Forest scope uses separate parameter sets: `-Forest` requires `-Server` and cannot be combined
+with `-DomainInfo` or `-SearchBase`. It reads active domain crossRefs in the seed forest's
+configuration, locates a DC for each domain, verifies the domain and forest configuration, then
+queries each domain over LDAP. External references and application partitions are excluded.
+This reads each domain's full attributes rather than relying on a global catalog's partial set.
+The same sAMAccountName in two domains produces two results, each with its own domain and DC.
+Within one domain, duplicate exact identities are an error. Wildcard filters return every candidate.
+
+All modes page at 500 objects by default (`-PageSize` accepts 1-1000); page size does not cap the
+total inventory. The private LDAP helper also accepts optional size and server time limits; its
+defaults add no client-side total cap. LDAP access errors terminate rather than returning a
+successful empty inventory. A failure can occur after earlier domain results were emitted:
+discard partial output and resolve the error before treating an inventory as complete.
+Directory ACLs still govern which users, attributes and domain crossRefs are visible. Offline
+tests cover paging configuration and result traversal; live directory validation is not implied.
+
+| Property | Type |
+|---|---|
+| DistinguishedName | string |
+| SamAccountName, UserPrincipalName, DisplayName, GivenName, Surname, Mail | string |
+| ProxyAddresses | string[], including an empty array when absent |
+| ObjectGUID | Guid |
+| ConsistencyGuidBytes | byte[] or null, raw mS-DS-ConsistencyGuid |
+| ObjectSID | string in SDDL form |
+| Enabled | bool, from userAccountControl's disabled bit |
+| DomainDNSRoot, Server | string, the domain and DC actually read |
+
+Missing GUID, SID, DN or account-control data fails conversion. Optional strings are empty when
+absent. A missing consistency GUID can mean absent or unreadable; it does not establish the sync
+source-anchor strategy. Pairing and anchor verification belong to the separate pairing workflow.
+Inventories contain personal data: store them in approved local state, outside Git and Coordination.
+
+The repository gate is offline and always sets `NSP_AD_LIVE_TESTS=0`. The existing local-domain
+integration test is opt-in only: after separate owner authorization, set `NSP_AD_LIVE_TESTS=1`
+and invoke that test directly with Pester. Domain membership alone never opts in.

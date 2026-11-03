@@ -20,7 +20,7 @@ function Get-NSPADComputer {
     begin { if (-not $DomainInfo) { $DomainInfo = Get-NSPADDomainInfo } }
     process {
         $account = "$($Name.TrimEnd('$'))`$"
-        $escaped = $account -replace '([\\*()])', '\$1'
+        $escaped = ConvertTo-NSPADLdapFilterValue -Value $account
         $found = @(Read-NSPADLdap -Server $DomainInfo.Server -SearchBase $DomainInfo.DistinguishedName -Filter "(&(objectCategory=computer)(sAMAccountName=$escaped))" -Property 'distinguishedName', 'dNSHostName', 'objectSid')
         foreach ($entry in $found) {
             [pscustomobject]@{

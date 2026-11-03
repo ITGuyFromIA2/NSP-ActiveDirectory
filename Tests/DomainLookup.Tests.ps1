@@ -57,11 +57,11 @@ Describe 'Get-NSPADComputer (mocked)' {
     It 'returns nothing for an unknown computer and escapes filter characters' {
         Mock -ModuleName NSP.ActiveDirectory Read-NSPADLdap { }
         Get-NSPADComputer -Name 'bad*(name)' -DomainInfo $script:domain | Should -BeNullOrEmpty
-        Should -Invoke -ModuleName NSP.ActiveDirectory Read-NSPADLdap -ParameterFilter { $Filter -eq '(&(objectCategory=computer)(sAMAccountName=bad\*\(name\)$))' }
+        Should -Invoke -ModuleName NSP.ActiveDirectory Read-NSPADLdap -ParameterFilter { $Filter -eq '(&(objectCategory=computer)(sAMAccountName=bad\2a\28name\29$))' }
     }
 }
 
-Describe 'Domain lookups against this machine''s domain (read-only)' {
+Describe 'Domain lookups against this machine''s domain (read-only)' -Skip:($env:NSP_AD_LIVE_TESTS -ne '1') {
     BeforeAll {
         $script:joined = try { [bool](Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).PartOfDomain } catch { $false }
     }

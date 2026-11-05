@@ -54,6 +54,16 @@ function Set-NSPADUserAddress {
             throw 'Plan is stale, modified or blocked by the refreshed inventory; regenerate and review it.'
         }
     }
+    $upnChanges = @($fresh | Where-Object { $_.Before.UserPrincipalName -cne $_.After.UserPrincipalName })
+    if ($upnChanges.Count) {
+        $forestInfo = Get-NSPADForestInfo -Server $Plan[0].Server -ErrorAction Stop
+        foreach ($change in $upnChanges) {
+            $suffix = $change.After.UserPrincipalName.Split('@')[-1]
+            if ($forestInfo.AvailableUPNSuffixes -inotcontains $suffix) {
+                throw 'Target UPN suffix is unavailable in the forest. Separately plan and explicitly add it, then refresh and review the user plan.'
+            }
+        }
+    }
     foreach ($entry in $Plan) {
         $result = 'Unchanged'
         $message = ''

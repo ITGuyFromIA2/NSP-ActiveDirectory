@@ -3,6 +3,20 @@
 All notable changes to NSP.ActiveDirectory are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.11 - 2026-11-05
+
+- Add LDAP `Get-NSPADForestInfo`, distinguishing domain DNS roots from alternate UPN suffixes,
+  with configuration GUID and DC provenance for stable forest review.
+- Add pure `Get-NSPADForestUPNSuffixPlan` and preview-default `Add-NSPADForestUPNSuffix`.
+  Explicit Apply revalidates/confirm/adds one suffix using RSAT, preserves existing values,
+  and reads back. No implicit user changes, cloud verification, DNS changes or sync cycle.
+- Block actual address application when a changed UPN uses an unavailable forest suffix;
+  keep previews offline and mail/proxy-only updates independent of the UPN suffix gate.
+- Add offline coverage for forest discovery, implicit/configured suffixes, stale/tampered
+  plans, recreated forest identity, additive writes, preservation, read-back and the UPN gate.
+  User output schema is unchanged. No live directory operation or Gallery publication occurred.
+
+
 ## 0.1.10 - 2026-11-05
 
 - Add `Get-NSPADUserAddressPlan`: offline UPN/mail/primary SMTP planning, suffix and name formats,

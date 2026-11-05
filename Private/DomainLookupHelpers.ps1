@@ -30,6 +30,7 @@ function Read-NSPADRootDse {
     param([Parameter(Mandatory)][string]$Server)
     $rootDse = [ADSI]"LDAP://$Server/RootDSE"
     @{
+        rootdomainnamingcontext    = [string]$rootDse.rootDomainNamingContext[0]
         defaultnamingcontext       = [string]$rootDse.defaultNamingContext[0]
         configurationnamingcontext = [string]$rootDse.configurationNamingContext[0]
     }

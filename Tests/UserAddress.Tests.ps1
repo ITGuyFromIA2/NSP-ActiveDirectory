@@ -24,6 +24,7 @@ Describe 'User address application (offline fakes)' {
     BeforeEach {
         $script:current = New-AddressFixture
         $script:addressPlan = Get-NSPADUserAddressPlan -User $script:current -OldDomain old.example -NewDomain new.example
+        Mock -ModuleName NSP.ActiveDirectory Get-NSPADForestInfo { [pscustomobject]@{AvailableUPNSuffixes=@('old.example','new.example')} }
         Mock -ModuleName NSP.ActiveDirectory Assert-NSPADCommand {}
         Mock -ModuleName NSP.ActiveDirectory Get-NSPADUser { $script:current }
         Mock -ModuleName NSP.ActiveDirectory Get-NSPADDomainInfo {
@@ -55,6 +56,17 @@ Describe 'User address application (offline fakes)' {
         $script:current.Mail = 'changed@old.example'
         { Set-NSPADUserAddress -Plan $script:addressPlan -Apply -Confirm:$false } | Should -Throw '*stale*'
         Should -Invoke -ModuleName NSP.ActiveDirectory Set-ADUser -Times 0 -Exactly
+    }
+    It 'blocks a changed UPN when its suffix is missing on premises' {
+        Mock -ModuleName NSP.ActiveDirectory Get-NSPADForestInfo { [pscustomobject]@{AvailableUPNSuffixes=@('old.example')} }
+        { Set-NSPADUserAddress -Plan $script:addressPlan -Apply -Confirm:$false } | Should -Throw '*suffix*'
+        Should -Invoke -ModuleName NSP.ActiveDirectory Set-ADUser -Times 0 -Exactly
+    }
+    It 'does not require an email-only target domain to be a forest UPN suffix' {
+        Mock -ModuleName NSP.ActiveDirectory Get-NSPADForestInfo { throw 'No forest facts should be requested' }
+        $script:addressPlan = Get-NSPADUserAddressPlan -User $script:current -OldDomain old.example -NewDomain new.example -UpdateUPN:$false
+        (Set-NSPADUserAddress -Plan $script:addressPlan -Apply -Confirm:$false).Result | Should -Be 'Verified'
+        Should -Invoke -ModuleName NSP.ActiveDirectory Get-NSPADForestInfo -Times 0 -Exactly
     }
     It 'rejects a tampered proposed value' {
         $script:addressPlan.After.Mail = 'tampered@new.example'

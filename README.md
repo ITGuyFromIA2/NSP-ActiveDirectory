@@ -216,3 +216,52 @@ preflight, then refresh both inventories and revalidate the saved queue by GUID/
 Address changes and hard matches require separate decisions; normal sync may establish a link
 between these steps. Pairing UI integration belongs to NSP.M365.UserPairing and is separate from
 these AD commands.
+
+## Forest UPN suffix gate
+
+The pairing menu can compare selected Microsoft 365 domains with the on-prem forest's suffixes,
+then offer each missing suffix as a separate, explicitly confirmed action. These AD primitives
+do not read Microsoft 365, automatically import cloud domains or create suffixes during a user
+update. All directory reads/writes still need authorization for that environment.
+
+```powershell
+# After authorization for the forest read:
+$forest = Get-NSPADForestInfo -Server dc01.old.example
+$forest | Select-Object ForestDNSRoot, DomainDNSRoots, AlternateUPNSuffixes, AvailableUPNSuffixes
+$suffixPlan = Get-NSPADForestUPNSuffixPlan -ForestInfo $forest -Suffix new.example
+Add-NSPADForestUPNSuffix -Plan $suffixPlan                  # offline preview
+Add-NSPADForestUPNSuffix -Plan $suffixPlan -Apply -WhatIf    # offline preview
+# With separate authorization for this forest change, confirm the selected suffix:
+# $result = Add-NSPADForestUPNSuffix -Plan $suffixPlan -Apply
+```
+
+`Get-NSPADForestInfo` reads LDAP and needs no RSAT or ADWS. It returns forest root/domain names,
+configuration DN and GUID, actual server, domain DNS roots, configured alternate UPN suffixes
+and their distinct union as `AvailableUPNSuffixes`. Domain DNS roots already qualify; they do
+not need duplicate alternate entries. This follows Microsoft's
+[UPN naming rules](https://learn.microsoft.com/en-us/windows/win32/ad/naming-properties).
+Directory errors terminate. Visibility remains subject to ACLs; an absent optional uPNSuffixes
+attribute cannot be distinguished from a hidden one, so the visible list is not proof of full
+attribute access. Missing required forest identity or inconsistent discovery is an error.
+
+`Get-NSPADForestUPNSuffixPlan` is pure and accepts one DNS suffix without `@`. It returns
+`NSP.ActiveDirectory.ForestUPNSuffixPlan`: forest identity, configuration GUID, pinned server,
+requested Suffix, Availability (`Domain`, `Alternate`, `Missing`), domain roots, Before/After
+alternate arrays, Changed, Blocked and Reasons. Existing domain/alternate suffixes are no-ops.
+
+`Add-NSPADForestUPNSuffix` previews by default. Actual `-Apply` revalidates forest identity and
+the reviewed snapshot, confirms the one addition, rereads immediately before writing, then uses
+RSAT's `Set-ADForest -UPNSuffixes @{Add=...}` on the pinned server. It never replaces/removes the
+suffix list. Read-back checks the forest, target suffix and preservation of prior alternates.
+See Microsoft's [Set-ADForest documentation](https://learn.microsoft.com/en-us/powershell/module/activedirectory/set-adforest).
+Results are Preview, AlreadyAvailable, Skipped, Verified, WriteUnverified or VerificationFailed.
+An uncertain result requires inspection before retrying; a success on one DC does not prove
+replication. This does not verify an Entra domain, create DNS records, change any user or start sync.
+
+After each suffix addition, refresh forest facts before planning another: old snapshots are
+stale after configuration changes. Refresh/review user plans too. User-address `-Apply` now
+refuses a changed UPN whose target suffix is unavailable; it never adds that suffix implicitly.
+Mail/proxy-only changes do not require an email domain to be a forest UPN suffix. Pure previews
+remain offline. Pairing menu integration and cloud-domain selection stay with the Graph Specialist.
+The existing User output contract is unchanged. Coverage is offline with invented forest facts;
+no live suffix addition has been validated by this release preparation.

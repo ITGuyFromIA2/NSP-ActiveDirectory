@@ -1,6 +1,6 @@
 @{
     RootModule        = 'NSP.ActiveDirectory.psm1'
-    ModuleVersion     = '0.1.10'
+    ModuleVersion     = '0.1.11'
     GUID              = '35f1aeb4-782a-4a6a-8865-daec1be3cce6'
     Author            = 'Network Systems Plus'
     CompanyName       = 'Network Systems Plus'
@@ -13,6 +13,7 @@
     PowerShellVersion = '5.1'
 
     FunctionsToExport = @(
+        'Add-NSPADForestUPNSuffix'
         'Add-NSPADGroupMember'
         'Compare-NSPADGroupMembership'
         'Copy-NSPADUserGroupMembership'
@@ -22,6 +23,8 @@
         'Get-NSPADAutoEnrollGpoPlan'
         'Get-NSPADComputer'
         'Get-NSPADDomainInfo'
+        'Get-NSPADForestInfo'
+        'Get-NSPADForestUPNSuffixPlan'
         'Get-NSPADGpoCatalog'
         'Get-NSPADGpoRecipe'
         'Get-NSPADOrganizationalUnitChild'

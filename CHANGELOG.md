@@ -3,6 +3,20 @@
 All notable changes to NSP.ActiveDirectory are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.10 - 2026-11-05
+
+- Add `Get-NSPADUserAddressPlan`: offline UPN/mail/primary SMTP planning, suffix and name formats,
+  optional SAM rename, alias conversion and explicit removal controls. Preserve aliases and
+  X400/X500 by default; keep the existing User output contract unchanged.
+- Return typed before/after plans with stable identity, policy, blocking reasons and existing/
+  proposed visible-user collision checks, including unselected and skipped users.
+- Add `Set-NSPADUserAddress`: preview by default, explicit Apply, per-user confirmation, full
+  forest refresh, stale-plan validation, GUID-based minimal writes and pinned-DC read-back.
+  Stop after uncertainty; never trigger synchronization. No live directory validation is implied.
+- Add invented offline regression fixtures for legacy behavior and write guards; document
+  pairing inventory/queue refresh after address changes and the limits of user-only collision checks.
+
+
 ## 0.1.9 - 2026-11-03
 
 - Add `Get-NSPADUser`: exact identity, escaped wildcard search and paged enumeration, with the

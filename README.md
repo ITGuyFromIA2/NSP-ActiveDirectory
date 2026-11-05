@@ -146,3 +146,73 @@ Inventories contain personal data: store them in approved local state, outside G
 The repository gate is offline and always sets `NSP_AD_LIVE_TESTS=0`. The existing local-domain
 integration test is opt-in only: after separate owner authorization, set `NSP_AD_LIVE_TESTS=1`
 and invoke that test directly with Pester. Domain membership alone never opts in.
+
+## User address migration
+
+`Get-NSPADUserAddressPlan` brings the reusable UPN, mail, proxy-address and optional SAM rename
+behavior into a pure planner. It accepts the existing `NSP.ActiveDirectory.User` objects without
+changing that contract or mutating the input. Directory reads and writes require separate owner
+authorization for the environment. The following read is an example to run only after authorization:
+
+```powershell
+$inventory = @(Get-NSPADUser -All -Forest -Server 'dc01.old.example' -ErrorAction Stop)
+# Use stable GUIDs to select accounts. Unselected users still participate in collision checks.
+$selected = @($inventory | Where-Object SamAccountName -eq 'alex' | ForEach-Object ObjectGUID)
+$plans = @(Get-NSPADUserAddressPlan -User $inventory -Identity $selected `
+    -OldDomain old.example -NewDomain new.example -Format First.Last)
+$plans | Select-Object ObjectGUID, Blocked, Changed, Reasons, Before, After
+Set-NSPADUserAddress -Plan $plans                   # preview; no directory access
+Set-NSPADUserAddress -Plan $plans -Apply -WhatIf     # preview; no directory access
+# With separate live-write authorization, this confirms each changed account:
+# $results = @(Set-NSPADUserAddress -Plan $plans -Apply)
+```
+
+Parameters use domain names without `@`. `-Format ReplaceSuffix` is the default and preserves
+the UPN local part; the existing suffix must be the old or target domain. Other formats are
+`SamAccountName`, `FLast`, `First.Last` and `LastF`. Name formats require both names; no `NA`
+fallback, transliteration or silent truncation occurs. Unusual addresses become blocked review
+cases. Only `-ChangeSamAccountName` renames SAM, with the twenty-character limit checked.
+
+UPN, mail and primary SMTP updates default to enabled and are independently controlled by
+`-UpdateUPN:$false`, `-UpdateMail:$false` and `-UpdatePrimarySmtp:$false`. Empty mail stays empty
+unless `-CreateMailIfEmpty` is supplied. Existing mail or a primary SMTP outside the old domain
+and different from the generated target blocks the plan rather than being overwritten.
+
+Aliases, the previous valid UPN, previous primary SMTP and X400/X500 addresses are preserved by
+default. SMTP comparisons use exact case-insensitive address equality, with exactly one `SMTP:`
+primary when promotion is enabled; other SMTP entries are `smtp:`. Duplicates are removed without
+regex or substring matching. Existing non-SMTP values retain their spelling.
+
+- `-ConvertAliasDomain` also generates target-domain versions of old-domain SMTP aliases.
+- `-PreserveOldAddress:$false` removes old-domain SMTP values during conversion/promotion.
+- `-RemoveAliasDomain @('routing.example')` removes only exact matching SMTP suffixes.
+- `-RemoveAddressType X400,X500` explicitly removes those types.
+- `-SkipIdentity $guids` excludes selected users from changes while keeping their collision claims.
+
+The supplied inventory must be complete for the desired scope. The planner checks existing and
+proposed UPN/mail/SMTP claims across visible users, and SAM claims within each domain. Existing
+claims remain reserved even for selected users: a batch cannot depend on freeing another user's
+address first. It does not inventory contacts/groups or validate Exchange address policy, accepted
+domains, configured UPN suffixes, every directory ACL or all external systems using an address.
+Complete visible-user inventory is not proof that an address is available everywhere.
+
+`Set-NSPADUserAddress -Apply` needs RSAT's `Set-ADUser`. It refreshes all forest users, regenerates
+the selected batch under one policy, checks collisions and rejects changed GUID/SID/provenance,
+source state or proposed state before the first write. Plans whose selected DC differs from the
+new inventory are conservatively stale; regenerate and review them. It then confirms each user,
+reads that GUID again on its pinned DC, writes only changed attributes, and reads back. An empty
+proxy list uses `-Clear`, never `-Replace` with an empty array. It never triggers Entra Connect sync.
+
+Results are `Preview`, `Unchanged`, `Skipped`, `Verified`, `Failed`, `WriteUnverified` or
+`VerificationFailed`. An uncertain result stops the batch; earlier successful results remain in
+the output and later users have not been attempted. Retain those results and inspect uncertainty
+before retrying. There is no rollback or cross-user transaction, and concurrent edits elsewhere
+can race a preflight. Verification covers these AD attributes on that DC, not replication or cloud
+linking. Tests use invented objects and fake directory boundaries; no live migration is proven.
+
+Plans and results contain personal data. Keep them in approved local state outside Git and
+Coordination. In the pairing process, perform address preparation before final hard-match
+preflight, then refresh both inventories and revalidate the saved queue by GUID/SID and cloud ID.
+Address changes and hard matches require separate decisions; normal sync may establish a link
+between these steps. Pairing UI integration belongs to NSP.M365.UserPairing and is separate from
+these AD commands.

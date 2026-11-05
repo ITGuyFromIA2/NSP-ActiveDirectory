@@ -24,11 +24,42 @@ function Get-NSPADForestDomainInfo {
     foreach ($ref in $refs) { $domains[[string]$ref['ncname']] }
 }
 
+function ConvertTo-NSPADOptionalInt64 {
+    # LDAP Integer8 values normally arrive as Int64. Retain exact integer text too, but never
+    # coerce missing, floating point, Boolean or multi-valued data to a plausible zero/flag.
+    param([AllowNull()]$Value)
+    if ($null -eq $Value -or $Value -is [array] -or $Value -is [bool] -or
+        $Value -is [double] -or $Value -is [single] -or $Value -is [decimal]) { return $null }
+    $number = [long]0
+    if ([long]::TryParse([string]$Value, [Globalization.NumberStyles]::Integer,
+        [Globalization.CultureInfo]::InvariantCulture, [ref]$number)) { return $number }
+    return $null
+}
+
 function ConvertTo-NSPADUser {
     param([Parameter(Mandatory)][hashtable]$Entry, [Parameter(Mandatory)]$DomainInfo)
     foreach ($required in 'distinguishedname', 'objectguid', 'objectsid', 'useraccountcontrol') {
         if (-not $Entry.ContainsKey($required) -or $null -eq $Entry[$required]) {
             throw "LDAP user result is missing $required; identity and enabled state must be readable."
+        }
+    }
+    $passwordTime = $null
+    $passwordState = 'Unknown'
+    $mustChange = $null
+    $fileTime = ConvertTo-NSPADOptionalInt64 -Value $Entry['pwdlastset']
+    if ($null -ne $fileTime) {
+        if ($fileTime -eq 0) {
+            $passwordState = 'Zero'
+            $mustChange = [bool](-not ([int]$Entry['useraccountcontrol'] -band 0x10000))
+        } elseif ($fileTime -gt 0) {
+            try {
+                $passwordTime = [datetime]::FromFileTimeUtc($fileTime)
+                $passwordState = 'Known'
+                $mustChange = $false
+            } catch [ArgumentOutOfRangeException] {
+                # Optional corrupt/unreadable metadata must not invent a timestamp or status.
+                $passwordTime = $null
+            }
         }
     }
     [pscustomobject]@{
@@ -47,5 +78,9 @@ function ConvertTo-NSPADUser {
         Enabled              = [bool](-not ([int]$Entry['useraccountcontrol'] -band 2))
         DomainDNSRoot        = [string]$DomainInfo.DNSRoot
         Server               = [string]$DomainInfo.Server
+        PasswordLastSetUtc    = $passwordTime
+        PasswordLastSetState  = $passwordState
+        PasswordMustChangeAtNextLogon = $mustChange
+        MsExchRecipientTypeDetails = ConvertTo-NSPADOptionalInt64 -Value $Entry['msexchrecipienttypedetails']
     }
 }

@@ -113,7 +113,7 @@ function Get-NSPADUser {
         if ($base -ne $domainDn -and -not $base.EndsWith(",$domainDn", [StringComparison]::OrdinalIgnoreCase)) {
             throw 'SearchBase must be within the selected domain naming context.'
         }
-        $entries = @(Read-NSPADLdap -Server $domain.Server -SearchBase $base -Filter $query -PageSize $PageSize -Property distinguishedName,sAMAccountName,userPrincipalName,displayName,givenName,sn,mail,proxyAddresses,objectGUID,mS-DS-ConsistencyGuid,objectSid,userAccountControl -MultiValued proxyAddresses)
+        $entries = @(Read-NSPADLdap -Server $domain.Server -SearchBase $base -Filter $query -PageSize $PageSize -Property distinguishedName,sAMAccountName,userPrincipalName,displayName,givenName,sn,mail,proxyAddresses,objectGUID,mS-DS-ConsistencyGuid,objectSid,userAccountControl,pwdLastSet,msExchRecipientTypeDetails -MultiValued proxyAddresses)
         if ($PSBoundParameters.ContainsKey('Identity') -and $entries.Count -gt 1) { throw 'LDAP returned multiple users for an exact identity in one domain.' }
         foreach ($entry in $entries) { ConvertTo-NSPADUser -Entry $entry -DomainInfo $domain }
     }

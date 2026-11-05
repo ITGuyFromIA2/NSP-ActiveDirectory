@@ -137,6 +137,10 @@ tests cover paging configuration and result traversal; live directory validation
 | ObjectSID | string in SDDL form |
 | Enabled | bool, from userAccountControl's disabled bit |
 | DomainDNSRoot, Server | string, the domain and DC actually read |
+| PasswordLastSetUtc | DateTime UTC or null |
+| PasswordLastSetState | string: Known, Zero, Unknown |
+| PasswordMustChangeAtNextLogon | bool or null |
+| MsExchRecipientTypeDetails | Int64 or null |
 
 Missing GUID, SID, DN or account-control data fails conversion. Optional strings are empty when
 absent. A missing consistency GUID can mean absent or unreadable; it does not establish the sync
@@ -263,5 +267,31 @@ stale after configuration changes. Refresh/review user plans too. User-address `
 refuses a changed UPN whose target suffix is unavailable; it never adds that suffix implicitly.
 Mail/proxy-only changes do not require an email domain to be a forest UPN suffix. Pure previews
 remain offline. Pairing menu integration and cloud-domain selection stay with the Graph Specialist.
-The existing User output contract is unchanged. Coverage is offline with invented forest facts;
+Existing identity and address fields are preserved. Coverage is offline with invented forest facts;
 no live suffix addition has been validated by this release preparation.
+
+## Optional user password and recipient metadata
+
+Source 0.1.12 extends the agreed User contract with four properties, always present. Existing
+identity/provenance and address fields retain their types. All domain and forest query modes
+request `pwdLastSet` and `msExchRecipientTypeDetails`; no RSAT or additional directory query is needed.
+
+- `PasswordLastSetUtc`: DateTime with Kind=Utc for a valid positive FILETIME; null otherwise.
+- `PasswordLastSetState`: Known, Zero or Unknown. Missing, unreadable, negative, malformed and
+  out-of-range password data is Unknown. Zero stays Zero and never becomes a date in 1601.
+- `PasswordMustChangeAtNextLogon`: bool for Known/Zero, otherwise null. Known positive time is
+  false; zero is true only when userAccountControl does not have DONT_EXPIRE_PASSWD (0x10000).
+  This describes the attribute flag combination, not all password-expiration/logon policy.
+- `MsExchRecipientTypeDetails`: raw Int64 or null. Preserve zero and large bit flags exactly;
+  missing/unreadable/malformed/out-of-range data is null, never an invented classification.
+
+The zero/never-expires rule follows Microsoft's
+[pwdLastSet attribute documentation](https://learn.microsoft.com/en-us/windows/win32/adschema/a-pwdlastset).
+These optional attributes are diagnostic data. A missing value can mean absent or unreadable;
+it does not prove a user has no Exchange recipient type. Comparing the AD password timestamp
+with cloud lastPasswordChangeDateTime does not prove password synchronization or equality of
+passwords. Queue state and reports containing these fields still belong outside Git/Coordination.
+
+The pairing consumer can prefer these public fields over its temporary LDAP adapter. Its review
+and preflight policy remain pairing-owned; adding raw recipient metadata here does not itself
+implement any cloud eligibility decision or authorize a live read/write.

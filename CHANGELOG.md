@@ -3,6 +3,17 @@
 All notable changes to NSP.ActiveDirectory are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 
+## 0.1.12 - 2026-11-05
+
+- Extend the agreed `NSP.ActiveDirectory.User` contract with PasswordLastSetUtc,
+  PasswordLastSetState, PasswordMustChangeAtNextLogon and MsExchRecipientTypeDetails.
+  Request both optional LDAP attributes in every domain/forest query mode.
+- Preserve UTC DateTime and raw Int64 types. Distinguish known positive pwdLastSet, zero with
+  the never-expires flag considered, and unknown data; never turn absent/invalid data into zero.
+- Add offline schema, conversion, range/precision and query-mode regression coverage.
+  Existing identity/address fields are unchanged. No live directory or Gallery operation.
+
+
 ## 0.1.11 - 2026-11-05
 
 - Add LDAP `Get-NSPADForestInfo`, distinguishing domain DNS roots from alternate UPN suffixes,

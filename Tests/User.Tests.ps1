@@ -24,7 +24,7 @@ Describe 'Get-NSPADUser domain queries (offline)' {
     It 'exports the reader and returns exactly the typed contract' {
         $u = Get-NSPADUser -Identity one -DomainInfo $script:domain
         $u.PSObject.TypeNames[0] | Should -Be 'NSP.ActiveDirectory.User'
-        @($u.PSObject.Properties.Name | Sort-Object) | Should -Be @('DistinguishedName','SamAccountName','UserPrincipalName','DisplayName','GivenName','Surname','Mail','ProxyAddresses','ObjectGUID','ConsistencyGuidBytes','ObjectSID','Enabled','DomainDNSRoot','Server' | Sort-Object)
+        @($u.PSObject.Properties.Name | Sort-Object) | Should -Be @('DistinguishedName','SamAccountName','UserPrincipalName','DisplayName','GivenName','Surname','Mail','ProxyAddresses','ObjectGUID','ConsistencyGuidBytes','ObjectSID','Enabled','DomainDNSRoot','Server','PasswordLastSetUtc','PasswordLastSetState','PasswordMustChangeAtNextLogon','MsExchRecipientTypeDetails' | Sort-Object)
         $u.ObjectGUID | Should -BeOfType ([guid])
         $u.ObjectGUID | Should -Be $script:guid
         , $u.ConsistencyGuidBytes | Should -BeOfType ([byte[]])
@@ -48,6 +48,73 @@ Describe 'Get-NSPADUser domain queries (offline)' {
         Get-NSPADUser -Identity ("a*)(|(x=*))\`0") -DomainInfo $script:domain
         Should -Invoke -ModuleName NSP.ActiveDirectory Read-NSPADLdap -Times 1 -Exactly -ParameterFilter {
             $Filter -eq '(&(objectCategory=person)(objectClass=user)(sAMAccountName=a\2a\29\28|\28x=\2a\29\29\5c\00))' -and $PageSize -gt 0
+        }
+    }
+    It 'always exposes the optional fields and keeps absent values unknown' {
+        $u = Get-NSPADUser -All -DomainInfo $script:domain
+        $u.PasswordLastSetState | Should -Be 'Unknown'
+        ($null -eq $u.PasswordLastSetUtc) | Should -BeTrue
+        ($null -eq $u.PasswordMustChangeAtNextLogon) | Should -BeTrue
+        ($null -eq $u.MsExchRecipientTypeDetails) | Should -BeTrue
+        @($u.PSObject.Properties.Name) | Should -Contain 'PasswordLastSetUtc'
+        @($u.PSObject.Properties.Name) | Should -Contain 'MsExchRecipientTypeDetails'
+    }
+    It 'converts a positive FILETIME to the exact UTC instant' {
+        $instant = [datetime]::SpecifyKind([datetime]'2026-01-02T03:04:05', [DateTimeKind]::Utc)
+        $script:user.pwdlastset = $instant.ToFileTimeUtc()
+        $u = Get-NSPADUser -Identity one -DomainInfo $script:domain
+        $u.PasswordLastSetUtc | Should -BeOfType ([datetime])
+        $u.PasswordLastSetUtc.Ticks | Should -Be $instant.Ticks
+        $u.PasswordLastSetUtc.Kind | Should -Be ([DateTimeKind]::Utc)
+        $u.PasswordLastSetState | Should -Be 'Known'
+        $u.PasswordMustChangeAtNextLogon | Should -BeOfType ([bool])
+        $u.PasswordMustChangeAtNextLogon | Should -BeFalse
+    }
+    It 'handles pwdLastSet zero with never-expires flag <NeverExpires>' -ForEach @(
+        @{NeverExpires=$false; Uac=512; Expected=$true},
+        @{NeverExpires=$true; Uac=66048; Expected=$false}
+    ) {
+        $script:user.pwdlastset = [long]0
+        $script:user.useraccountcontrol = $Uac
+        $u = Get-NSPADUser -All -DomainInfo $script:domain
+        $u.PasswordLastSetState | Should -Be 'Zero'
+        ($null -eq $u.PasswordLastSetUtc) | Should -BeTrue
+        $u.PasswordMustChangeAtNextLogon | Should -BeOfType ([bool])
+        $u.PasswordMustChangeAtNextLogon | Should -Be $Expected
+    }
+    It 'keeps invalid password metadata unknown: <Label>' -ForEach @(
+        @{Label='null'; Value=$null}, @{Label='blank'; Value=''}, @{Label='negative'; Value=[long]-1},
+        @{Label='out-of-range FILETIME'; Value=[long]::MaxValue}, @{Label='overflow'; Value='9223372036854775808'},
+        @{Label='not numeric'; Value='unknown'}, @{Label='fraction'; Value='1.5'}, @{Label='boolean'; Value=$false}
+    ) {
+        $script:user.pwdlastset = $Value
+        $u = Get-NSPADUser -All -DomainInfo $script:domain
+        $u.PasswordLastSetState | Should -Be 'Unknown'
+        ($null -eq $u.PasswordLastSetUtc) | Should -BeTrue
+        ($null -eq $u.PasswordMustChangeAtNextLogon) | Should -BeTrue
+    }
+    It 'preserves recipient Int64 values including zero and large flags: <Value>' -ForEach @(
+        @{Value=[long]0}, @{Value=[long]2}, @{Value=[long]34359738368}, @{Value=[long]::MaxValue}, @{Value='34359738368'}
+    ) {
+        $script:user.msexchrecipienttypedetails = $Value
+        $u = Get-NSPADUser -All -DomainInfo $script:domain
+        $u.MsExchRecipientTypeDetails | Should -BeOfType ([long])
+        $u.MsExchRecipientTypeDetails | Should -Be ([long]$Value)
+    }
+    It 'keeps malformed recipient metadata null: <Label>' -ForEach @(
+        @{Label='null'; Value=$null}, @{Label='empty'; Value=''}, @{Label='bad text'; Value='unknown'},
+        @{Label='overflow'; Value='9223372036854775808'}, @{Label='fraction'; Value=1.5}, @{Label='boolean'; Value=$true}
+    ) {
+        $script:user.msexchrecipienttypedetails = $Value
+        $u = Get-NSPADUser -All -DomainInfo $script:domain
+        ($null -eq $u.MsExchRecipientTypeDetails) | Should -BeTrue
+    }
+    It 'requests optional LDAP metadata for every domain query mode' {
+        Get-NSPADUser -Identity one -DomainInfo $script:domain
+        Get-NSPADUser -Filter '*one*' -DomainInfo $script:domain
+        Get-NSPADUser -All -DomainInfo $script:domain
+        Should -Invoke -ModuleName NSP.ActiveDirectory Read-NSPADLdap -Times 3 -Exactly -ParameterFilter {
+            $Property -contains 'pwdLastSet' -and $Property -contains 'msExchRecipientTypeDetails'
         }
     }
     It 'searches all five attributes with intentional wildcard positions, escaping injection' {
@@ -152,6 +219,9 @@ Describe 'Get-NSPADUser explicit forest scope (offline)' {
     It 'supports exact identity and wildcard filter in the forest parameter sets' {
         @(Get-NSPADUser -Identity one -Forest -Server dc).Count | Should -Be 2
         @(Get-NSPADUser -Filter '*one*' -Forest -Server dc).Count | Should -Be 2
+        Should -Invoke -ModuleName NSP.ActiveDirectory Read-NSPADLdap -Times 4 -Exactly -ParameterFilter {
+            $SearchBase -notlike 'CN=Partitions,*' -and $Property -contains 'pwdLastSet' -and $Property -contains 'msExchRecipientTypeDetails'
+        }
     }
     It 'cannot combine forest search with a single domain or OU scope' {
         { Get-NSPADUser -All -Forest -Server dc -DomainInfo $script:forestDomain } | Should -Throw

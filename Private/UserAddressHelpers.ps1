@@ -37,6 +37,7 @@ function Get-NSPADAddressClaim {
     if ($User.Mail) { 'address:' + $User.Mail.ToLowerInvariant() }
     foreach ($proxy in $User.ProxyAddresses) {
         if ($proxy -imatch '^smtp:(.+)$') { 'address:' + $proxy.Substring(5).ToLowerInvariant() }
+        elseif ($proxy -match '^[A-Za-z][A-Za-z0-9]*:.+$') { 'proxy:' + $proxy.ToLowerInvariant() }
     }
     if ($User.SamAccountName) { 'sam:' + $User.DomainDNSRoot.ToLowerInvariant() + ':' + $User.SamAccountName.ToLowerInvariant() }
 }

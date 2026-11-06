@@ -47,6 +47,28 @@ Describe 'User address application (offline fakes)' {
         Should -Invoke -ModuleName NSP.ActiveDirectory Get-NSPADUser -Times 0 -Exactly
         Should -Invoke -ModuleName NSP.ActiveDirectory Set-ADUser -Times 0 -Exactly
     }
+    It 'regenerates reviewed additions against real AD Before and verifies the fake write' {
+        $map=@{};$map[$script:current.ObjectGUID.ToString()]=@('smtp:alias@new.example','SIP:user1@new.example','X500:/o=Example/cn=cloud')
+        $plan=Get-NSPADUserAddressPlan -User $script:current -OldDomain old.example -NewDomain new.example -AdditionalProxyAddresses $map
+        $plan.Before.ProxyAddresses | Should -Not -Contain 'SIP:user1@new.example'
+        (Set-NSPADUserAddress -Plan $plan -Apply -Confirm:$false).Result | Should -Be 'Verified'
+        $script:current.ProxyAddresses | Should -Contain 'SIP:user1@new.example'
+        $script:current.ProxyAddresses | Should -Contain 'X500:/o=Example/cn=cloud'
+        Should -Invoke -ModuleName NSP.ActiveDirectory Set-ADUser -Times 1 -Exactly -ParameterFilter { $Identity -eq [guid]'00000000-0000-0000-0000-000000000001' }
+    }
+    It 'regenerates additions after a saved JSON policy round trip' {
+        $map=@{};$map[$script:current.ObjectGUID.ToString()]=@('smtp:alias@new.example')
+        $plan=Get-NSPADUserAddressPlan -User $script:current -OldDomain old.example -NewDomain new.example -AdditionalProxyAddresses $map
+        $plan.Policy=$plan.Policy | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+        (Set-NSPADUserAddress -Plan $plan -Apply -Confirm:$false).Result | Should -Be 'Verified'
+    }
+    It 'still refuses stale AD Before when additional proxies were reviewed' {
+        $map=@{};$map[$script:current.ObjectGUID.ToString()]=@('SIP:user1@new.example')
+        $plan=Get-NSPADUserAddressPlan -User $script:current -OldDomain old.example -NewDomain new.example -AdditionalProxyAddresses $map
+        $script:current.ProxyAddresses += 'smtp:concurrent@old.example'
+        {Set-NSPADUserAddress -Plan $plan -Apply -Confirm:$false} | Should -Throw '*stale*'
+        Should -Invoke -ModuleName NSP.ActiveDirectory Set-ADUser -Times 0 -Exactly
+    }
     It 'performs no read or write with Apply WhatIf' {
         Set-NSPADUserAddress -Plan $script:addressPlan -Apply -WhatIf
         Should -Invoke -ModuleName NSP.ActiveDirectory Set-ADUser -Times 0 -Exactly

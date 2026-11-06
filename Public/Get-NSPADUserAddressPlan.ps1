@@ -7,6 +7,10 @@ function Get-NSPADUserAddressPlan {
         Identity selects GUIDs to change; other users remain collision candidates. The input is never
         mutated. Existing aliases and X400/X500 addresses are preserved unless explicitly removed.
         This plan does not verify UPN suffix configuration, Exchange policy or directory permissions.
+    .PARAMETER AdditionalProxyAddresses
+        Optional GUID-keyed dictionary of reviewed literal proxy additions. Existing AD Before is
+        preserved. Added SMTP entries are secondary unless they match the policy-selected primary.
+        The additions are retained in Policy for the writer's fresh-inventory regeneration.
     .EXAMPLE
         $plan = Get-NSPADUserAddressPlan -User $inventory -OldDomain old.example -NewDomain new.example -Format First.Last
     #>
@@ -27,7 +31,8 @@ function Get-NSPADUserAddressPlan {
         [bool]$PreserveOldAddress = $true,
         [switch]$ConvertAliasDomain,
         [string[]]$RemoveAliasDomain = @(),
-        [ValidateSet('X400','X500')][string[]]$RemoveAddressType = @()
+        [ValidateSet('X400','X500')][string[]]$RemoveAddressType = @(),
+        [object]$AdditionalProxyAddresses
     )
     foreach ($domain in $RemoveAliasDomain) {
         if (-not (Test-NSPADAddressDomain $domain)) { throw 'RemoveAliasDomain must contain DNS domains without @.' }
@@ -46,6 +51,33 @@ function Get-NSPADUserAddressPlan {
     foreach ($id in @(@($Identity) + @($SkipIdentity) | Where-Object { $null -ne $_ })) {
         if (-not $byId.ContainsKey($id.ToString())) { throw 'Selected or skipped GUID is absent from inventory.' }
     }
+    # Additions are explicit data, keyed by stable AD GUID. Before always remains the actual
+    # AD state so the writer's stale-plan checks and regeneration stay authoritative.
+    $additions = [ordered]@{}
+    if ($null -ne $AdditionalProxyAddresses) {
+        $names = if ($AdditionalProxyAddresses -is [Collections.IDictionary]) { @($AdditionalProxyAddresses.Keys) }
+            elseif ($AdditionalProxyAddresses -is [pscustomobject]) { @($AdditionalProxyAddresses.PSObject.Properties.Name) }
+            else { throw 'AdditionalProxyAddresses must be a GUID-keyed dictionary or saved policy object.' }
+        foreach ($name in @($names | Sort-Object)) {
+            $key = ([guid][string]$name).ToString('D')
+            if (-not $byId.ContainsKey($key) -or ($PSBoundParameters.ContainsKey('Identity') -and [guid]$key -notin $Identity) -or [guid]$key -in $SkipIdentity) {
+                throw 'Proxy additions must identify a selected, non-skipped user in the supplied inventory.'
+            }
+            if ($additions.Contains($key)) { throw 'Duplicate GUID in proxy additions.' }
+            $values = if ($AdditionalProxyAddresses -is [Collections.IDictionary]) { $AdditionalProxyAddresses[$name] }
+                else { $AdditionalProxyAddresses.PSObject.Properties[[string]$name].Value }
+            $list = [Collections.Generic.List[string]]::new()
+            foreach ($value in @($values)) {
+                if ($value -isnot [string] -or $value -notmatch '^[A-Za-z][A-Za-z0-9]*:[^\r\n]+\z' -or $value.IndexOf([char]0) -ge 0) {
+                    throw 'A proxy addition has an invalid protocol/value; supply complete literal addresses.'
+                }
+                # Additional SMTP addresses never silently replace the chosen primary.
+                if ($value -imatch '^smtp:') { $value = 'smtp:' + $value.Substring(5) }
+                $list.Add($value)
+            }
+            $additions[$key] = [string[]]@($list)
+        }
+    }
     $policy = [ordered]@{
         OldDomain = $OldDomain; NewDomain = $NewDomain; Format = $Format
         ChangeSamAccountName = [bool]$ChangeSamAccountName; CreateMailIfEmpty = [bool]$CreateMailIfEmpty
@@ -53,6 +85,7 @@ function Get-NSPADUserAddressPlan {
         PreserveOldAddress = $PreserveOldAddress; ConvertAliasDomain = [bool]$ConvertAliasDomain
         RemoveAliasDomain = [string[]]$RemoveAliasDomain; RemoveAddressType = [string[]]$RemoveAddressType
     }
+    if ($additions.Count) { $policy.AdditionalProxyAddresses = [pscustomobject]$additions }
     $plans = @{}
     foreach ($item in $User) {
         $id = [guid]$item.ObjectGUID
@@ -103,7 +136,8 @@ function Get-NSPADUserAddressPlan {
             $proxies = [Collections.Generic.List[string]]::new()
             if ($UpdatePrimarySmtp) { $proxies.Add('SMTP:' + $target) }
             else { foreach ($primary in $primaries) { $proxies.Add($primary) } }
-            foreach ($proxy in $before.ProxyAddresses) {
+            foreach ($proxy in @($before.ProxyAddresses) + @($additions[$id.ToString()])) {
+                if ($null -eq $proxy) { continue }
                 if ($proxy -imatch '^smtp:') {
                     $address = $proxy.Substring(5)
                     if (-not (Test-NSPADSimpleMailAddress $address)) { $reasons.Add('An existing SMTP proxy requires manual review.'); continue }

@@ -295,3 +295,17 @@ passwords. Queue state and reports containing these fields still belong outside 
 The pairing consumer can prefer these public fields over its temporary LDAP adapter. Its review
 and preflight policy remain pairing-owned; adding raw recipient metadata here does not itself
 implement any cloud eligibility decision or authorize a live read/write.
+
+## Reviewed additional proxy addresses
+
+`Get-NSPADUserAddressPlan -AdditionalProxyAddresses $byGuid` accepts a dictionary keyed by
+selected AD ObjectGUID, with complete literal proxy strings as each value. Before remains the
+actual AD state. The existing alias/type removal policy applies to additions as well; no address
+is generated for an opaque protocol. Additional SMTP values never silently replace the selected
+primary. Existing non-SMTP addresses remain preserved by default.
+
+The returned Policy retains the additions, including through JSON serialization. The existing
+writer regenerates the proposal from fresh AD and refuses changed Before/After, identity or
+collisions before writing. Non-SMTP collision checks cover the supplied user inventory, not all
+Exchange groups/contacts or every external recipient. The AD API cannot verify a cloud snapshot;
+the pairing consumer owns cloud identity/provenance and refresh checks. Keep plans private.

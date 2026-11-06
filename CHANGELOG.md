@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.13 - 2026-11-06
+
+- Add reviewed, GUID-keyed proxy additions to address planning without replacing actual AD Before.
+  Saved-policy regeneration and stale-state/read-back checks remain enforced by the writer.
+- Include non-SMTP proxy claims in supplied-user collision checks, including SIP and X500. Reject terminal newlines in reviewed literal values.
+
 All notable changes to NSP.ActiveDirectory are documented here. Versions follow
 [SemVer](https://semver.org/). `0.x` until it has real use outside NSP.
 

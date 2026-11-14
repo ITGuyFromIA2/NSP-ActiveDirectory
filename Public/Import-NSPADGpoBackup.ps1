@@ -8,6 +8,14 @@ function Import-NSPADGpoBackup {
         Works on a temporary copy: the catalog's own files are never changed (the zip-era
         ReplaceImportGPO.ps1 rewrote the backup in place). Import-GPO -CreateIfNeeded creates the GPO
         or overwrites the settings of an existing one with the same name. Supports -WhatIf.
+
+        A domain name that cannot be read, or a WMI filter that does not exist, stops the command
+        before anything is imported.
+
+        The result's WmiFilter and Linked are read back from the directory after the steps ran:
+        WmiFilter is the filter the GPO has now (empty if none), Linked is True only when the
+        link is really at the domain root. The filter and link steps follow NSP.Toolkit's dry run
+        (on by default), so with dry run on the GPO is imported and both come back empty / False.
     .PARAMETER Path
         A backup root (the folder holding the {GUID} folder) or a .zip of one.
     .PARAMETER TargetName
@@ -48,13 +56,42 @@ function Import-NSPADGpoBackup {
             $name = if ($TargetName) { $TargetName } else { $backup.DisplayName }
             if (-not $PSCmdlet.ShouldProcess($name, "Import GPO backup '$($backup.DisplayName)'$(if ($WmiFilterName) { ", WMI filter '$WmiFilterName'" })$(if ($LinkAtDomainRoot) { ', link at the domain root' })")) { return }
 
-            Convert-NSPADGpoBackupFolder -BackupRoot $backup.BackupRoot -From $script:NSPADGpoPlaceholder -To (Get-NSPADGpoDomainNames)
+            # Everything that can be found missing is looked up BEFORE the import, so a missing domain
+            # name or WMI filter stops the command with nothing written, not with a GPO imported and
+            # an exception in place of a result.
+            $names = Get-NSPADGpoDomainNames
+            foreach ($key in 'Pdc', 'Dns', 'NetBios') {
+                if ([string]::IsNullOrWhiteSpace("$($names[$key])")) { throw "This domain's $key name could not be read (Get-ADDomain) - nothing was imported." }
+            }
+            $domainDn = ''
+            if ($WmiFilterName -or $LinkAtDomainRoot) {
+                $domainDn = "$((Get-ADDomain -ErrorAction Stop).DistinguishedName)"
+                if ([string]::IsNullOrWhiteSpace($domainDn)) { throw "This domain's distinguished name could not be read (Get-ADDomain) - nothing was imported." }
+            }
+            if ($WmiFilterName -and -not (Get-NSPADWmiSomEntry -DomainDN $domainDn | Where-Object { $_.Name -eq $WmiFilterName } | Select-Object -First 1)) {
+                throw "WMI filter '$WmiFilterName' does not exist in $($names.Dns) - create it first (New-NSPADWmiFilter). Nothing was imported."
+            }
+
+            Convert-NSPADGpoBackupFolder -BackupRoot $backup.BackupRoot -From $script:NSPADGpoPlaceholder -To $names
             if ($Replace -and $Replace.Count) { Convert-NSPADGpoBackupToken -BackupRoot $backup.BackupRoot -Replace $Replace }
             $null = Import-GPO -BackupId $backup.BackupId -Path $backup.BackupRoot -TargetName $name -CreateIfNeeded -ErrorAction Stop
             if (-not (Get-GPO -Name $name -ErrorAction SilentlyContinue)) { throw "GPO '$name' was not imported." }
             if ($WmiFilterName) { Set-NSPADGpoWmiFilter -GpoName $name -WmiFilterName $WmiFilterName }
-            if ($LinkAtDomainRoot) { New-NSPADGpoLink -GpoName $name -TargetDN "$((Get-ADDomain -ErrorAction Stop).DistinguishedName)" }
-            [pscustomobject]@{ PSTypeName = 'NSP.ActiveDirectory.GpoImport'; GpoName = $name; BackupName = $backup.DisplayName; WmiFilter = $WmiFilterName; Linked = [bool]$LinkAtDomainRoot }
+            if ($LinkAtDomainRoot) { New-NSPADGpoLink -GpoName $name -TargetDN $domainDn }
+
+            # WmiFilter and Linked say what the directory holds now, read back after the steps above.
+            # Both steps are dry-run aware (Invoke-NSPStep), so asking for them is not proof they ran.
+            $appliedFilter = $null
+            if ($WmiFilterName) {
+                $after = Get-GPO -Name $name -ErrorAction SilentlyContinue
+                if ($after -and $after.PSObject.Properties['WmiFilter'] -and $after.WmiFilter) { $appliedFilter = "$($after.WmiFilter.Name)" }
+            }
+            $linked = $false
+            if ($LinkAtDomainRoot) {
+                try { $linked = [bool](Test-NSPADGpoLinked -GpoName $name -TargetDN $domainDn) }
+                catch { Write-Warning "GPO '$name' was imported, but its link at $domainDn could not be read back: $($_.Exception.Message)" }
+            }
+            [pscustomobject]@{ PSTypeName = 'NSP.ActiveDirectory.GpoImport'; GpoName = $name; BackupName = $backup.DisplayName; WmiFilter = $appliedFilter; Linked = $linked }
         } finally {
             Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false
         }

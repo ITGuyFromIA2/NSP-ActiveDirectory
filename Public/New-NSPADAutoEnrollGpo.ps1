@@ -6,6 +6,10 @@ function New-NSPADAutoEnrollGpo {
     .DESCRIPTION
         A dedicated GPO, so the Default Domain Policy is left alone. Re-running updates the values
         and skips the link if it is already there.
+
+        It throws, and changes nothing, when the GroupPolicy module is missing or the domain's
+        distinguished name cannot be read (pass -DomainDn). It throws after trying every value
+        when any value could not be set, and does not link the GPO in that case.
     .EXAMPLE
         New-NSPADAutoEnrollGpo -GpoName 'NSP - Certificate Auto-Enrollment'
     #>
@@ -17,15 +21,16 @@ function New-NSPADAutoEnrollGpo {
     )
     if (-not $PSCmdlet.ShouldProcess("$GpoName", 'Create the certificate auto-enrollment GPO and link it at the domain root')) { return }
     Use-NSPADDependency
-    if (-not (Get-Command Get-GPO -ErrorAction SilentlyContinue)) {
-        Write-Host '  GroupPolicy module not available - run Install-NSPADPrerequisite (menu 1),' -ForegroundColor Red
-        Write-Host '  or run this on a server with RSAT-GPMC.' -ForegroundColor Red
-        return
-    }
+    Assert-NSPADCommand Get-GPO -ModuleHint 'GroupPolicy'
     if (-not $DomainDn) {
-        try { $DomainDn = (Get-ADDomain -ErrorAction Stop).DistinguishedName } catch {
-            $DomainDn = 'DC=' + ($env:USERDNSDOMAIN -replace '\.', ',DC=')
+        try { $DomainDn = "$((Get-ADDomain -ErrorAction Stop).DistinguishedName)" } catch {
+            # Fall back to the logon domain only when there is one. Under SYSTEM or a local account
+            # the variable is empty, and a link target of 'DC=' must never be built from it.
+            if ($env:USERDNSDOMAIN) { $DomainDn = 'DC=' + ($env:USERDNSDOMAIN -replace '\.', ',DC=') }
         }
+    }
+    if ($DomainDn -notmatch '^\s*DC=[^,=\s]+') {
+        throw "The domain's distinguished name could not be read (Get-ADDomain) - pass -DomainDn. Nothing was changed."
     }
 
     $existing = Get-GPO -Name $GpoName -ErrorAction SilentlyContinue
@@ -37,10 +42,17 @@ function New-NSPADAutoEnrollGpo {
         Write-Host "  GPO '$GpoName' already exists - updating its values." -ForegroundColor Gray
     }
 
+    # Every value is attempted, so one failure does not hide the others; then any failure stops the
+    # command before the link, so a half-set GPO is never linked and never looks like success.
+    $failed = New-Object System.Collections.Generic.List[string]
     foreach ($v in (Get-NSPADAutoEnrollGpoPlan -IncludeComputerConfig:$IncludeComputerConfig)) {
-        Invoke-NSPStep -Description "Set $($v.Hive) value $($v.ValueName) = $($v.Value)" `
+        $step = Invoke-NSPStep -Description "Set $($v.Hive) value $($v.ValueName) = $($v.Value)" `
             -Commands @("Set-GPRegistryValue -Name '$GpoName' -Key '$($v.Key)' -ValueName $($v.ValueName) -Type $($v.Type) -Value $($v.Value)") `
-            -Action { Set-GPRegistryValue -Name $GpoName -Key $v.Key -ValueName $v.ValueName -Type $v.Type -Value $v.Value | Out-Null } -ContinueOnError | Out-Null
+            -Action { Set-GPRegistryValue -Name $GpoName -Key $v.Key -ValueName $v.ValueName -Type $v.Type -Value $v.Value -ErrorAction Stop | Out-Null } -ContinueOnError
+        if ($step -and $step.Error) { $failed.Add("$($v.Hive) $($v.ValueName): $($step.Error)") }
+    }
+    if ($failed.Count) {
+        throw "GPO '$GpoName': $($failed.Count) value(s) could not be set, so the GPO was not linked. $($failed -join ' | ')"
     }
 
     New-NSPADGpoLink -GpoName $GpoName -TargetDN $DomainDn

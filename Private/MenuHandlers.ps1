@@ -132,7 +132,11 @@ function Invoke-NSPADMenuAutoEnrollGpo {
         Write-Host ('    [{0}] {1}\{2} = {3} ({4})' -f $v.Hive, $v.Key, $v.ValueName, $v.Value, $v.Type) -ForegroundColor Gray
     }
     Write-Host '    AEPolicy 7 = enrolled + renew/update/remove-revoked + update-templates' -ForegroundColor DarkGray
-    if (Read-NSPConfirm -Prompt "`nProceed?" -DefaultYes) { New-NSPADAutoEnrollGpo -GpoName $gpoName }
+    if (Read-NSPConfirm -Prompt "`nProceed?" -DefaultYes) {
+        # New-NSPADAutoEnrollGpo throws on a failure; the menu shows it and stays open.
+        try { New-NSPADAutoEnrollGpo -GpoName $gpoName }
+        catch { Write-NSPConsoleLine "  $($_.Exception.Message)" -Role Error }
+    }
     Wait-NSPADReturn
 }
 

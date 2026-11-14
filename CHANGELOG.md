@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `Import-NSPADGpoBackup` stops before importing when a domain name cannot be read or the named WMI filter does not exist. Before, the GPO was imported and the command then threw, leaving a GPO with no filter or link and no result.
+- `Import-NSPADGpoBackup` reports `WmiFilter` and `Linked` as read back from the directory. Before, they repeated what was asked for, so `Linked` was True even when a dry run skipped the link.
+- `New-NSPADAutoEnrollGpo` throws when the GroupPolicy module is missing (it printed and returned), throws when the domain name cannot be read and there is no logon domain (it built the link target `DC=`), and throws without linking when any value could not be set (it printed and linked anyway). The manager menu shows the message and stays open.
+
 ## 0.1.13 - 2026-11-06
 
 - Add reviewed, GUID-keyed proxy additions to address planning without replacing actual AD Before.

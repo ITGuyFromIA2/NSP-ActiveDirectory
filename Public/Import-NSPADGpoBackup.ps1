@@ -32,21 +32,30 @@ function Import-NSPADGpoBackup {
         A domain controller. The domain-name reads, the filter lookup, Import-GPO, the filter and
         link steps and both read-backs all go to it, so the read-back never looks at a DC the
         import has not reached yet. Default: each cmdlet picks one.
+    .PARAMETER AsResult
+        Return an NSP.ActiveDirectory.WriteOutcome instead of the GpoImport object: Created (no GPO
+        of that name before), Updated (Import-GPO overwrote one) or Failed. Created/Updated need the
+        GPO, the requested filter and the requested link all read back. Unlike the default path,
+        Import-GPO itself follows NSP.Toolkit's dry run in this mode: with dry run on, nothing is
+        imported and the outcome is Previewed. CHECK Outcome. Not management-plane verification.
     .EXAMPLE
         Get-NSPADGpoCatalog -Path '\\fileserver\GPO' | Where-Object DisplayName -like '*TLS 1.2*' |
             ForEach-Object { Import-NSPADGpoBackup -Path $_.Path -WmiFilterName 'NSP_AT - All Servers' -LinkAtDomainRoot }
     #>
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType([pscustomobject])]
+    [OutputType('NSP.ActiveDirectory.WriteOutcome')]
     param(
         [Parameter(Mandatory, ValueFromPipelineByPropertyName)][string]$Path,
         [string]$TargetName,
         [string]$WmiFilterName,
         [switch]$LinkAtDomainRoot,
         [Collections.IDictionary]$Replace,
-        [ValidateNotNullOrEmpty()][string]$Server
+        [ValidateNotNullOrEmpty()][string]$Server,
+        [switch]$AsResult
     )
     process {
+        if ($AsResult) { return (Invoke-NSPADGpoBackupOutcome -Cmdlet $PSCmdlet -Path $Path -TargetName $TargetName -WmiFilterName $WmiFilterName -LinkAtDomainRoot ([bool]$LinkAtDomainRoot) -Replace $Replace -Server $Server) }
         Assert-NSPADCommand Import-GPO -ModuleHint 'GroupPolicy (RSAT)'
         $srv = Get-NSPADServerSplat -Server $Server
         if (-not (Test-Path -LiteralPath $Path)) { throw "GPO backup not found: $Path" }

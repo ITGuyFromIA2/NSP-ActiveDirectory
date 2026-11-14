@@ -10,11 +10,17 @@ function New-NSPADGroup {
     .PARAMETER Server
         A domain controller. The existence check and the create both go to it. Default: the AD
         module picks one for each cmdlet.
+    .PARAMETER AsResult
+        Return an NSP.ActiveDirectory.WriteOutcome instead of the DN. An expected directory failure
+        comes back as Outcome Failed with an ErrorCode instead of an exception, so CHECK Outcome.
+        A group with the same sAMAccountName but another DN, scope or category is Failed/Conflict,
+        not AlreadyPresent. The module's own observation, not management-plane verification.
     .EXAMPLE
         New-NSPADGroup -Name 'VPN_Staff' -Path 'OU=VPNGroups,DC=example,DC=com' -Description 'VPN users'
     #>
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType([string])]
+    [OutputType('NSP.ActiveDirectory.WriteOutcome')]
     param(
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][string]$Path,
@@ -22,8 +28,10 @@ function New-NSPADGroup {
         [ValidateSet('Security', 'Distribution')][string]$GroupCategory = 'Security',
         [string]$SamAccountName,
         [string]$Description,
-        [ValidateNotNullOrEmpty()][string]$Server
+        [ValidateNotNullOrEmpty()][string]$Server,
+        [switch]$AsResult
     )
+    if ($AsResult) { return (Invoke-NSPADGroupOutcome -Cmdlet $PSCmdlet -Name $Name -Path $Path -GroupScope $GroupScope -GroupCategory $GroupCategory -SamAccountName $SamAccountName -Description $Description -Server $Server) }
     if (-not $PSCmdlet.ShouldProcess("CN=$Name,$Path", 'Create the group if it is missing')) { return "CN=$Name,$Path" }
     Use-NSPADDependency
     Assert-NSPADCommand Get-ADGroup

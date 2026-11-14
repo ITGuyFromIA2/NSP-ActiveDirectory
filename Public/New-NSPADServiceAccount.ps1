@@ -24,6 +24,12 @@ function New-NSPADServiceAccount {
     .PARAMETER DomainInfo
         A Get-NSPADDomainInfo result, to reuse the DC it found. Default: look one up (on -Server
         when given).
+    .PARAMETER AsResult
+        Return an NSP.ActiveDirectory.WriteOutcome instead of the ServiceAccount object. An existing
+        gMSA that does not list every planned computer is Failed/Conflict, not AlreadyPresent; a
+        missing computer is Failed/NotFound; no usable KDS key is Failed/PreconditionFailed.
+        -Server and -DomainInfo naming different DCs still throws. CHECK Outcome. The module's
+        own observation, not management-plane verification.
     .EXAMPLE
         Set-NSPDryRun -Enabled $false
         New-NSPADServiceAccount -Name 'svc_transfer' -AllowedComputer 'APP01' -Description 'Runs the nightly file transfer'
@@ -38,8 +44,13 @@ function New-NSPADServiceAccount {
         [ValidateRange(1, 3650)][int]$PasswordIntervalDays = 30,
         [switch]$SkipKdsCheck,
         [PSTypeName('NSP.ActiveDirectory.DomainInfo')]$DomainInfo,
-        [ValidateNotNullOrEmpty()][string]$Server
+        [ValidateNotNullOrEmpty()][string]$Server,
+        [switch]$AsResult
     )
+    if ($AsResult) {
+        return (Invoke-NSPADServiceAccountOutcome -Cmdlet $PSCmdlet -Name $Name -AllowedComputer $AllowedComputer -Description $Description -DNSHostName $DNSHostName `
+                -PasswordIntervalDays $PasswordIntervalDays -SkipKdsCheck ([bool]$SkipKdsCheck) -DomainInfo $DomainInfo -Server $Server)
+    }
 
     $bare = $Name.TrimEnd('$')
     $DomainInfo = Resolve-NSPADDomainInfoForServer -DomainInfo $DomainInfo -Server $Server

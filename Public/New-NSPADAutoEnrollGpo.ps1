@@ -13,16 +13,25 @@ function New-NSPADAutoEnrollGpo {
     .PARAMETER Server
         A domain controller. The domain read, the GPO read and create, every value and the link all
         go to it. Default: each cmdlet picks one.
+    .PARAMETER AsResult
+        Return an NSP.ActiveDirectory.WriteOutcome instead of nothing. The GPO's values and link are
+        compared first: all already right is AlreadyPresent with nothing written; otherwise Created
+        (new GPO) or Updated, decided by reading every value and the link back. This mode never
+        guesses the domain from the logon session: pass -DomainDn or let Get-ADDomain answer.
+        CHECK Outcome. The module's own observation, not management-plane verification.
     .EXAMPLE
         New-NSPADAutoEnrollGpo -GpoName 'NSP - Certificate Auto-Enrollment'
     #>
     [CmdletBinding(SupportsShouldProcess)]
+    [OutputType('NSP.ActiveDirectory.WriteOutcome')]
     param(
         [string]$GpoName = 'NSP - Certificate Auto-Enrollment',
         [switch]$IncludeComputerConfig,
         [string]$DomainDn,
-        [ValidateNotNullOrEmpty()][string]$Server
+        [ValidateNotNullOrEmpty()][string]$Server,
+        [switch]$AsResult
     )
+    if ($AsResult) { return (Invoke-NSPADAutoEnrollGpoOutcome -Cmdlet $PSCmdlet -GpoName $GpoName -IncludeComputerConfig ([bool]$IncludeComputerConfig) -DomainDn $DomainDn -Server $Server) }
     if (-not $PSCmdlet.ShouldProcess("$GpoName", 'Create the certificate auto-enrollment GPO and link it at the domain root')) { return }
     Use-NSPADDependency
     Assert-NSPADCommand Get-GPO -ModuleHint 'GroupPolicy'

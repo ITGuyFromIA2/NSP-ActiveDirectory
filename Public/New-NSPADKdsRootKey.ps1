@@ -24,21 +24,28 @@ function New-NSPADKdsRootKey {
         (five minutes of grace).
     .PARAMETER DomainInfo
         A Get-NSPADDomainInfo result, to reuse the domain controller it found. Default: look one up.
+    .PARAMETER AsResult
+        Return an NSP.ActiveDirectory.WriteOutcome instead of the status: AlreadyPresent when any
+        key is visible (whatever its start time), Created when one is visible after the create.
+        Server is always empty: the reads use the DomainInfo DC but Add-KdsRootKey runs here.
+        A past -EffectiveTime still throws. CHECK Outcome.
     .EXAMPLE
         Set-NSPDryRun -Enabled $false
         New-NSPADKdsRootKey -EffectiveTime (Get-Date)
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
-    [OutputType('NSP.ActiveDirectory.KdsRootKeyStatus')]
+    [OutputType('NSP.ActiveDirectory.KdsRootKeyStatus', 'NSP.ActiveDirectory.WriteOutcome')]
     param(
         [Parameter(Mandatory)][datetime]$EffectiveTime,
-        [PSTypeName('NSP.ActiveDirectory.DomainInfo')]$DomainInfo
+        [PSTypeName('NSP.ActiveDirectory.DomainInfo')]$DomainInfo,
+        [switch]$AsResult
     )
 
     # Five minutes of grace covers a caller that computed "now" a moment ago, and clock drift.
     if ($EffectiveTime.ToUniversalTime() -lt [DateTime]::UtcNow.AddMinutes(-5)) {
         throw "EffectiveTime $($EffectiveTime.ToString('u')) is in the past. A back-dated KDS root key skips the wait that lets every domain controller receive it; this command does not create one. Nothing was changed."
     }
+    if ($AsResult) { return (Invoke-NSPADKdsRootKeyOutcome -Cmdlet $PSCmdlet -EffectiveTime $EffectiveTime -DomainInfo $DomainInfo) }
     if (-not $DomainInfo) { $DomainInfo = Get-NSPADDomainInfo }
 
     $status = Get-NSPADKdsRootKeyStatus -DomainInfo $DomainInfo

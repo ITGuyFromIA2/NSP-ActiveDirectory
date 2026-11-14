@@ -9,6 +9,10 @@ function New-NSPADGpoLink {
     .PARAMETER Server
         A domain controller. The link read and the link write both go to it. Default: the
         GroupPolicy module's own choice (normally the PDC emulator).
+    .PARAMETER AsResult
+        Return an NSP.ActiveDirectory.WriteOutcome instead of nothing. An expected directory failure
+        comes back as Outcome Failed with an ErrorCode instead of an exception, so CHECK Outcome.
+        The module's own observation, not management-plane verification.
     .EXAMPLE
         New-NSPADGpoLink -GpoName 'NSP - Certificate Auto-Enrollment' -TargetDN 'DC=example,DC=com'
     #>
@@ -16,8 +20,10 @@ function New-NSPADGpoLink {
     param(
         [Parameter(Mandatory)][string]$GpoName,
         [Parameter(Mandatory)][string]$TargetDN,
-        [ValidateNotNullOrEmpty()][string]$Server
+        [ValidateNotNullOrEmpty()][string]$Server,
+        [switch]$AsResult
     )
+    if ($AsResult) { return (Invoke-NSPADGpoLinkOutcome -Cmdlet $PSCmdlet -GpoName $GpoName -TargetDN $TargetDN -Server $Server) }
     if (-not $PSCmdlet.ShouldProcess("$TargetDN", "Link GPO '$GpoName'")) { return }
     Use-NSPADDependency
     Assert-NSPADCommand Get-GPO -ModuleHint 'GroupPolicy'

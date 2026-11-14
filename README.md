@@ -80,6 +80,43 @@ Only `-Action Deploy` and `-Scope All` exist so far.
 The dashboard reads: `CompanyName`, `Auth_UserGroup_Value` (main VPN group), `VPNFW_DNS_Mode`,
 `VPNFW_DCComms_GroupName`, `VPNFW_SMB_GroupName`, `VPNFW_RDS_GroupName`, `VPNFW_DNS_GroupName`.
 
+## Write outcomes (`-AsResult`)
+
+For a caller that is not a person at a menu, such as a planner or an orchestrator. Eleven write
+functions take `-AsResult`: `New-NSPADOrganizationalUnit`, `New-NSPADGroup`,
+`Add-NSPADGroupMember`, `New-NSPADGpoLink`, `Set-NSPADGpoWmiFilter`, `New-NSPADWmiFilter`,
+`Import-NSPADGpoBackup`, `New-NSPADAutoEnrollGpo`, `New-NSPADServiceAccount`,
+`Install-NSPADServiceAccount` and `New-NSPADKdsRootKey`. Without the switch, every return value is
+as before.
+
+With it, the function returns one `NSP.ActiveDirectory.WriteOutcome`:
+
+| Property | Meaning |
+| --- | --- |
+| `Operation`, `Target` | The function, and what was asked for |
+| `Outcome` | `Created`, `Updated`, `AlreadyPresent`, `Previewed` (dry run or `-WhatIf`), `Skipped` (confirmation declined) or `Failed` |
+| `ObservedTarget` | Only what a directory read returned. Empty when nothing was read |
+| `ObservedMatch` | `Created` and `Updated`: a fresh read after the write matched the plan. `AlreadyPresent`: the existing object matched identity and planned properties. Otherwise False |
+| `Server` | The DC every directory call used, or empty when none was pinned or part of the work is local |
+| `ErrorCode` | `Failed` only: `PreconditionFailed`, `NotFound`, `Conflict`, `WriteFailed`, `ReadBackFailed` (the change may already have happened; nothing is rolled back) or `Unexpected` (reserved) |
+
+- **Check `Outcome`.** An expected directory failure is returned as `Failed`, not thrown.
+  Parameter errors, ambiguous targeting (`-Server` against `-DomainInfo`) and module bugs still throw.
+- **No message is carried.** The object has no exception text, and the `-AsResult` path prints only
+  the operation and the code, because objects and host output both reach logs and transcripts.
+  Run the same call without `-AsResult` to see the directory's own error.
+- **It is the module's own observation, not proof.** It is not a management-plane step result and
+  sets no `verified` flag. A management plane takes its own fresh read before it treats a step as
+  applied, and treats `Previewed` and `Skipped` as not applied.
+- **`Import-NSPADGpoBackup -AsResult` honours dry run for `Import-GPO` too.** With dry run on,
+  nothing is imported. The default path still imports and previews only the filter and the link,
+  and stays that way until the single write gate (rank 6) is decided.
+
+```powershell
+$r = New-NSPADGroup -Name 'VPN_Staff' -Path 'OU=VPN,DC=example,DC=com' -Server 'dc01.example.com' -AsResult
+if ($r.Outcome -notin 'Created', 'AlreadyPresent') { throw "Group step: $($r.Outcome) $($r.ErrorCode)" }
+```
+
 ## Tests
 
 ```powershell

@@ -15,6 +15,10 @@ function Set-NSPADGpoWmiFilter {
     .PARAMETER Server
         A domain controller. The domain read, the GPO read, the filter lookup and the ADSI write
         all go to it. Default: each cmdlet picks one, and ADSI binds serverless.
+    .PARAMETER AsResult
+        Return an NSP.ActiveDirectory.WriteOutcome instead of nothing (Updated, or AlreadyPresent
+        when the GPO already has that setting). A missing filter is Failed/NotFound. CHECK Outcome.
+        The module's own observation, not management-plane verification.
     .EXAMPLE
         Set-NSPADGpoWmiFilter -GpoName 'NSP - TLS1 - Enable TLS 1.2' -WmiFilterName 'NSP_AT - All Servers'
     #>
@@ -23,8 +27,10 @@ function Set-NSPADGpoWmiFilter {
         [Parameter(Mandatory)][string]$GpoName,
         [Parameter(Mandatory, ParameterSetName = 'Set')][string]$WmiFilterName,
         [Parameter(Mandatory, ParameterSetName = 'Clear')][switch]$Clear,
-        [ValidateNotNullOrEmpty()][string]$Server
+        [ValidateNotNullOrEmpty()][string]$Server,
+        [switch]$AsResult
     )
+    if ($AsResult) { return (Invoke-NSPADGpoWmiFilterOutcome -Cmdlet $PSCmdlet -GpoName $GpoName -WmiFilterName $WmiFilterName -Clear ([bool]$Clear) -Server $Server) }
     $action = if ($Clear) { 'Remove the WMI filter' } else { "Apply WMI filter '$WmiFilterName'" }
     if (-not $PSCmdlet.ShouldProcess($GpoName, $action)) { return }
     Use-NSPADDependency

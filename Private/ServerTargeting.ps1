@@ -40,7 +40,8 @@ function Resolve-NSPADDomainInfoForServer {
     $named = -not [string]::IsNullOrWhiteSpace($Server)
     if ($DomainInfo) {
         if ($named -and "$($DomainInfo.Server)" -ne $Server.Trim()) {
-            throw "-Server '$($Server.Trim())' and -DomainInfo (from '$($DomainInfo.Server)') name different domain controllers. Pass one, or make them match. Nothing was changed."
+            # Terminating on purpose: ambiguous targeting is never turned into an -AsResult outcome.
+            throw (New-NSPADTerminatingError "-Server '$($Server.Trim())' and -DomainInfo (from '$($DomainInfo.Server)') name different domain controllers. Pass one, or make them match. Nothing was changed.")
         }
         return $DomainInfo
     }

@@ -12,15 +12,21 @@ function New-NSPADWmiFilter {
     .PARAMETER Server
         A domain controller. The domain read, the filter lookup and the ADSI write all go to it.
         Default: Get-ADDomain picks one, and ADSI binds serverless.
+    .PARAMETER AsResult
+        Return one NSP.ActiveDirectory.WriteOutcome per filter instead of nothing: Created, Updated
+        (queries or description drifted) or AlreadyPresent. CHECK Outcome. The module's own
+        observation, not management-plane verification.
     .EXAMPLE
         Get-NSPADWellKnownWmiFilter | New-NSPADWmiFilter
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]$Filter,
-        [ValidateNotNullOrEmpty()][string]$Server
+        [ValidateNotNullOrEmpty()][string]$Server,
+        [switch]$AsResult
     )
     process {
+        if ($AsResult) { return (Invoke-NSPADWmiFilterOutcome -Cmdlet $PSCmdlet -Filter $Filter -Server $Server) }
         if (-not $PSCmdlet.ShouldProcess("$($Filter.Name)", 'Create the WMI filter if it is missing')) { return }
         Use-NSPADDependency
         $srv = Get-NSPADServerSplat -Server $Server

@@ -6,6 +6,11 @@ function New-NSPADOrganizationalUnit {
     .PARAMETER Server
         A domain controller. The existence check and the create both go to it. Default: the AD
         module picks one for each cmdlet.
+    .PARAMETER AsResult
+        Return an NSP.ActiveDirectory.WriteOutcome instead of the DN (see "Write outcomes" in
+        the README). An expected directory failure comes back as Outcome Failed with an
+        ErrorCode instead of an exception, so CHECK Outcome. It is the module's own observation,
+        not management-plane verification. AlreadyPresent also requires a planned -Description to match.
     .EXAMPLE
         New-NSPADOrganizationalUnit -Name VPNGroups -Path 'OU=Clients,DC=example,DC=com'
     .EXAMPLE
@@ -13,12 +18,15 @@ function New-NSPADOrganizationalUnit {
     #>
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType([string])]
+    [OutputType('NSP.ActiveDirectory.WriteOutcome')]
     param(
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][string]$Path,
         [string]$Description,
-        [ValidateNotNullOrEmpty()][string]$Server
+        [ValidateNotNullOrEmpty()][string]$Server,
+        [switch]$AsResult
     )
+    if ($AsResult) { return (Invoke-NSPADOrganizationalUnitOutcome -Cmdlet $PSCmdlet -Name $Name -Path $Path -Description $Description -Server $Server) }
     if (-not $PSCmdlet.ShouldProcess("OU=$Name,$Path", 'Create the organizational unit if it is missing')) { return "OU=$Name,$Path" }
     Use-NSPADDependency
     Assert-NSPADCommand Get-ADOrganizationalUnit

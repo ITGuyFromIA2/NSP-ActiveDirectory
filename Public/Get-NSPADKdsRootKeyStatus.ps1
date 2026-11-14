@@ -19,6 +19,10 @@ function Get-NSPADKdsRootKeyStatus {
         Reading these objects needs Domain Admin-level rights. NoneVisible can therefore also
         mean "this account is not allowed to see them"; the function cannot tell the two apart.
         It never throws for a failed read: check Status.
+
+        Usable means msKds-UseStartTime has passed. Domain controllers may wait about 10 more
+        hours before they use the key (inferred from Microsoft's lab advice; not yet measured), so
+        a gMSA create can still fail just after a key turns Usable.
     .PARAMETER DomainInfo
         A Get-NSPADDomainInfo result, to reuse the domain controller it found. Default: look one up.
     .EXAMPLE

@@ -8,22 +8,25 @@ function New-NSPADKdsRootKey {
 
           - If any KDS root key is already visible, it creates nothing and returns the status.
           - -EffectiveTime is mandatory. There is no default, and a time in the past is refused.
-            Windows makes a new key usable about 10 hours after it is created so that every domain
-            controller has it first; a start time in the past skips that wait. Skipping it is a
-            decision for whoever owns the forest, and this function does not make it for them.
-            Usual value: (Get-Date).AddHours(10).
+            Domain controllers wait about 10 hours after the effective time before they use a key,
+            so that every DC has it first. A start time 10 hours in the past skips that wait.
+            Skipping it is a decision for whoever owns the forest, and this function does not make
+            it for them. Usual value: (Get-Date), which is accepted, and then about 10 hours'
+            wait. (Get-Date).AddHours(10) would wait about 20 hours.
+            (Inferred from Microsoft's lab advice to back-date by 10 hours; not yet measured.)
           - After the step runs it reads the key back and throws if none is visible.
 
         Returns the status object of Get-NSPADKdsRootKeyStatus with one more property, Created
         (True only when this call created a key and then saw it). In a dry run or under -WhatIf
         nothing is created and Created is False.
     .PARAMETER EffectiveTime
-        When the key becomes usable. Must not be in the past.
+        The key's effective time; DCs start using it about 10 hours later. Must not be in the past
+        (five minutes of grace).
     .PARAMETER DomainInfo
         A Get-NSPADDomainInfo result, to reuse the domain controller it found. Default: look one up.
     .EXAMPLE
         Set-NSPDryRun -Enabled $false
-        New-NSPADKdsRootKey -EffectiveTime (Get-Date).AddHours(10)
+        New-NSPADKdsRootKey -EffectiveTime (Get-Date)
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
     [OutputType('NSP.ActiveDirectory.KdsRootKeyStatus')]

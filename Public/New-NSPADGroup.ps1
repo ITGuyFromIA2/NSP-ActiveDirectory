@@ -7,6 +7,9 @@ function New-NSPADGroup {
         The existence check is by sAMAccountName (LDAP filter), not display name, so a same-named
         group in another OU is never mistaken for this one. In DRY RUN the returned DN is the
         predicted one, for planning and display only.
+    .PARAMETER Server
+        A domain controller. The existence check and the create both go to it. Default: the AD
+        module picks one for each cmdlet.
     .EXAMPLE
         New-NSPADGroup -Name 'VPN_Staff' -Path 'OU=VPNGroups,DC=example,DC=com' -Description 'VPN users'
     #>
@@ -18,21 +21,23 @@ function New-NSPADGroup {
         [ValidateSet('Global', 'DomainLocal', 'Universal')][string]$GroupScope = 'Global',
         [ValidateSet('Security', 'Distribution')][string]$GroupCategory = 'Security',
         [string]$SamAccountName,
-        [string]$Description
+        [string]$Description,
+        [ValidateNotNullOrEmpty()][string]$Server
     )
     if (-not $PSCmdlet.ShouldProcess("CN=$Name,$Path", 'Create the group if it is missing')) { return "CN=$Name,$Path" }
     Use-NSPADDependency
     Assert-NSPADCommand Get-ADGroup
+    $srv = Get-NSPADServerSplat -Server $Server
     $sam = if ($SamAccountName) { $SamAccountName } else { $Name -replace '[^A-Za-z0-9_\-]', '' }
-    $existing = Get-ADGroup -LDAPFilter "(sAMAccountName=$sam)" -ErrorAction SilentlyContinue
+    $existing = Get-ADGroup -LDAPFilter "(sAMAccountName=$sam)" @srv -ErrorAction SilentlyContinue
     if ($existing) {
         Write-Host "  Group '$sam' already exists ($($existing.DistinguishedName)) - skipping create." -ForegroundColor Gray
         return $existing.DistinguishedName
     }
     $result = Invoke-NSPStep -Description "Create AD group '$Name' ($GroupScope $GroupCategory) under $Path" `
-        -Commands @("New-ADGroup -Name '$Name' -SamAccountName '$sam' -GroupScope $GroupScope -GroupCategory $GroupCategory -Path '$Path'") `
+        -Commands @("New-ADGroup -Name '$Name' -SamAccountName '$sam' -GroupScope $GroupScope -GroupCategory $GroupCategory -Path '$Path'$(Format-NSPADServerArg $Server)") `
         -Action {
-            $params = @{ Name = $Name; SamAccountName = $sam; GroupScope = $GroupScope; GroupCategory = $GroupCategory; Path = $Path; PassThru = $true }
+            $params = @{ Name = $Name; SamAccountName = $sam; GroupScope = $GroupScope; GroupCategory = $GroupCategory; Path = $Path; PassThru = $true } + $srv
             if ($Description) { $params['Description'] = $Description }
             (New-ADGroup @params).DistinguishedName
         }

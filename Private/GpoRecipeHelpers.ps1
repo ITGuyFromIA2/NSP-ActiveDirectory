@@ -87,8 +87,9 @@ function Initialize-NSPADGpoRecipeShare {
 function Test-NSPADGpoLinked {
     # True when -TargetDN really carries a link to the GPO - read back from AD, so a caller never
     # depends on what the link step reported (or on whether a dry run skipped it).
-    param([Parameter(Mandatory)][string]$GpoName, [Parameter(Mandatory)][string]$TargetDN)
-    $links = @((Get-GPInheritance -Target $TargetDN -ErrorAction Stop).GpoLinks | Where-Object { $_.DisplayName -eq $GpoName })
+    param([Parameter(Mandatory)][string]$GpoName, [Parameter(Mandatory)][string]$TargetDN, [string]$Server)
+    $srv = Get-NSPADServerSplat -Server $Server
+    $links = @((Get-GPInheritance -Target $TargetDN @srv -ErrorAction Stop).GpoLinks | Where-Object { $_.DisplayName -eq $GpoName })
     return ($links.Count -gt 0)
 }
 

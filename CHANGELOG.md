@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- New: optional `-Server` on `New-NSPADOrganizationalUnit`, `New-NSPADGroup`, `Add-NSPADGroupMember`, `New-NSPADGpoLink`, `Set-NSPADGpoWmiFilter`, `New-NSPADWmiFilter`, `Import-NSPADGpoBackup`, `New-NSPADAutoEnrollGpo` and `New-NSPADServiceAccount`. Every directory read and write in the call goes to that domain controller: the existence check, the write, the read-back, the ADSI binds, and the functions it calls. A write and its read-back therefore never land on two DCs. Without `-Server` nothing changes. `New-NSPADServiceAccount` refuses `-Server` and `-DomainInfo` that name different DCs. Not covered, because they act on the local computer: `Install-NSPADServiceAccount`, `Install-NSPADPrerequisite`, and the create step of `New-NSPADKdsRootKey` (`Add-KdsRootKey` has no `-Server`).
 - New: `Get-NSPADKdsRootKeyStatus` (read-only; it was an internal helper) says whether the forest has a KDS root key that gMSAs can use yet, and when the earliest one starts. It returns a status instead of throwing when the read fails.
 - New: `New-NSPADKdsRootKey` creates the KDS root key on a forest that has none. `-EffectiveTime` is mandatory and a time in the past is refused. It creates nothing when a key already exists, follows the dry run and `-WhatIf`, and reads the key back before reporting success.
 - `New-NSPADServiceAccount -WhatIf` warns about a missing computer account or KDS root key and carries on with the preview. Without `-WhatIf` both still stop the command.

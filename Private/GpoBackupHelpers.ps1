@@ -34,7 +34,9 @@ function Get-NSPADGpoBackupInfo {
 
 function Get-NSPADGpoDomainNames {
     # This domain's names in placeholder order: Pdc, Dns, NetBios.
-    $d = Get-ADDomain -ErrorAction Stop
+    param([string]$Server)
+    $srv = Get-NSPADServerSplat -Server $Server
+    $d = Get-ADDomain @srv -ErrorAction Stop
     [ordered]@{ Pdc = "$($d.PDCEmulator)"; Dns = "$($d.DNSRoot)"; NetBios = "$($d.NetBIOSName)" }
 }
 

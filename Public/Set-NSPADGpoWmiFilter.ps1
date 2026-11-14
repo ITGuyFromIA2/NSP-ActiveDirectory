@@ -12,6 +12,9 @@ function Set-NSPADGpoWmiFilter {
         The WMI filter's name.
     .PARAMETER Clear
         Remove the GPO's WMI filter instead.
+    .PARAMETER Server
+        A domain controller. The domain read, the GPO read, the filter lookup and the ADSI write
+        all go to it. Default: each cmdlet picks one, and ADSI binds serverless.
     .EXAMPLE
         Set-NSPADGpoWmiFilter -GpoName 'NSP - TLS1 - Enable TLS 1.2' -WmiFilterName 'NSP_AT - All Servers'
     #>
@@ -19,17 +22,19 @@ function Set-NSPADGpoWmiFilter {
     param(
         [Parameter(Mandatory)][string]$GpoName,
         [Parameter(Mandatory, ParameterSetName = 'Set')][string]$WmiFilterName,
-        [Parameter(Mandatory, ParameterSetName = 'Clear')][switch]$Clear
+        [Parameter(Mandatory, ParameterSetName = 'Clear')][switch]$Clear,
+        [ValidateNotNullOrEmpty()][string]$Server
     )
     $action = if ($Clear) { 'Remove the WMI filter' } else { "Apply WMI filter '$WmiFilterName'" }
     if (-not $PSCmdlet.ShouldProcess($GpoName, $action)) { return }
     Use-NSPADDependency
     Assert-NSPADCommand Get-GPO -ModuleHint 'GroupPolicy (RSAT)'
-    $domain = Get-ADDomain -ErrorAction Stop
-    $gpo = Get-GPO -Name $GpoName -ErrorAction Stop
+    $srv = Get-NSPADServerSplat -Server $Server
+    $domain = Get-ADDomain @srv -ErrorAction Stop
+    $gpo = Get-GPO -Name $GpoName @srv -ErrorAction Stop
     $id = ''
     if (-not $Clear) {
-        $filter = Get-NSPADWmiSomEntry -DomainDN "$($domain.DistinguishedName)" | Where-Object { $_.Name -eq $WmiFilterName } | Select-Object -First 1
+        $filter = Get-NSPADWmiSomEntry -DomainDN "$($domain.DistinguishedName)" -Server $Server | Where-Object { $_.Name -eq $WmiFilterName } | Select-Object -First 1
         if (-not $filter) { throw "WMI filter '$WmiFilterName' does not exist in $($domain.DNSRoot) - create it first (New-NSPADWmiFilter)." }
         $id = $filter.Id
         if ($gpo.WmiFilter -and "$($gpo.WmiFilter.Name)" -eq $WmiFilterName) {
@@ -38,6 +43,6 @@ function Set-NSPADGpoWmiFilter {
         }
     }
     Invoke-NSPStep -Description "$action on GPO '$GpoName'" `
-        -Commands @("[ADSI] gPCWQLFilter on CN={$($gpo.Id)},CN=Policies,CN=System,$($domain.DistinguishedName) = $(if ($id) { "[$($domain.DNSRoot);$id;0]" } else { '<cleared>' })") `
-        -Action { Set-NSPADGpoWqlFilterAttribute -DomainDN "$($domain.DistinguishedName)" -DnsRoot "$($domain.DNSRoot)" -GpoGuid "$($gpo.Id)" -WmiFilterId $id } | Out-Null
+        -Commands @("[ADSI] gPCWQLFilter on $(Get-NSPADAdsiPath -DistinguishedName "CN={$($gpo.Id)},CN=Policies,CN=System,$($domain.DistinguishedName)" -Server $Server) = $(if ($id) { "[$($domain.DNSRoot);$id;0]" } else { '<cleared>' })") `
+        -Action { Set-NSPADGpoWqlFilterAttribute -DomainDN "$($domain.DistinguishedName)" -DnsRoot "$($domain.DNSRoot)" -GpoGuid "$($gpo.Id)" -WmiFilterId $id -Server $Server } | Out-Null
 }

@@ -6,20 +6,25 @@ function New-NSPADGpoLink {
     .DESCRIPTION
         Only the link - building the GPO's content (New-GPO + Set-GPRegistryValue, or Import-GPO)
         stays with the caller.
+    .PARAMETER Server
+        A domain controller. The link read and the link write both go to it. Default: the
+        GroupPolicy module's own choice (normally the PDC emulator).
     .EXAMPLE
         New-NSPADGpoLink -GpoName 'NSP - Certificate Auto-Enrollment' -TargetDN 'DC=example,DC=com'
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)][string]$GpoName,
-        [Parameter(Mandatory)][string]$TargetDN
+        [Parameter(Mandatory)][string]$TargetDN,
+        [ValidateNotNullOrEmpty()][string]$Server
     )
     if (-not $PSCmdlet.ShouldProcess("$TargetDN", "Link GPO '$GpoName'")) { return }
     Use-NSPADDependency
     Assert-NSPADCommand Get-GPO -ModuleHint 'GroupPolicy'
+    $srv = Get-NSPADServerSplat -Server $Server
     $existingLinks = @()
     try {
-        $existingLinks = @((Get-GPInheritance -Target $TargetDN -ErrorAction Stop).GpoLinks | Where-Object { $_.DisplayName -eq $GpoName })
+        $existingLinks = @((Get-GPInheritance -Target $TargetDN @srv -ErrorAction Stop).GpoLinks | Where-Object { $_.DisplayName -eq $GpoName })
     } catch {
         # A bad -TargetDN surfaces as New-GPLink's own clearer error below.
         Write-Verbose "Get-GPInheritance failed for ${TargetDN}: $_"
@@ -29,10 +34,10 @@ function New-NSPADGpoLink {
         return
     }
     Invoke-NSPStep -Description "Link GPO '$GpoName' at $TargetDN" `
-        -Commands @("New-GPLink -Name '$GpoName' -Target '$TargetDN' -LinkEnabled Yes") `
+        -Commands @("New-GPLink -Name '$GpoName' -Target '$TargetDN' -LinkEnabled Yes$(Format-NSPADServerArg $Server)") `
         -Action {
             try {
-                New-GPLink -Name $GpoName -Target $TargetDN -LinkEnabled Yes | Out-Null
+                New-GPLink -Name $GpoName -Target $TargetDN -LinkEnabled Yes @srv | Out-Null
             } catch {
                 if ($_.Exception.Message -notmatch 'already linked|already exists') { throw }
             }

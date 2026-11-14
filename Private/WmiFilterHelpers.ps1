@@ -38,8 +38,8 @@ function ConvertFrom-NSPADWmiParm2 {
 
 function Get-NSPADWmiSomEntry {
     # Every msWMI-Som object in the domain as plain objects (Name, Description, Query, Id, DN).
-    param([Parameter(Mandatory)][string]$DomainDN)
-    $root = [ADSI]"LDAP://CN=SOM,CN=WMIPolicy,CN=System,$DomainDN"
+    param([Parameter(Mandatory)][string]$DomainDN, [string]$Server)
+    $root = New-NSPADDirectoryEntry -DistinguishedName "CN=SOM,CN=WMIPolicy,CN=System,$DomainDN" -Server $Server
     $searcher = New-Object DirectoryServices.DirectorySearcher($root, '(objectClass=msWMI-Som)')
     foreach ($p in 'msWMI-Name', 'msWMI-Parm1', 'msWMI-Parm2', 'msWMI-ID', 'distinguishedName') { [void]$searcher.PropertiesToLoad.Add($p) }
     foreach ($r in $searcher.FindAll()) {
@@ -57,12 +57,13 @@ function Save-NSPADWmiSomEntry {
     # Creates (no -DN) or updates (-DN of an existing filter) one msWMI-Som object.
     param(
         [Parameter(Mandatory)][string]$DomainDN, [Parameter(Mandatory)][string]$DnsRoot,
-        [Parameter(Mandatory)][string]$Name, [string]$Description, [Parameter(Mandatory)][string[]]$Query, [string]$DN
+        [Parameter(Mandatory)][string]$Name, [string]$Description, [Parameter(Mandatory)][string[]]$Query, [string]$DN,
+        [string]$Server
     )
     $now = (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss.ffffff') + '-000'
     $parm2 = ConvertTo-NSPADWmiParm2 -Query $Query
     if ($DN) {
-        $entry = [ADSI]"LDAP://$DN"
+        $entry = New-NSPADDirectoryEntry -DistinguishedName $DN -Server $Server
         $entry.Put('msWMI-Parm1', $(if ($Description) { $Description } else { ' ' }))
         $entry.Put('msWMI-Parm2', $parm2)
         $entry.Put('msWMI-ChangeDate', $now)
@@ -70,7 +71,7 @@ function Save-NSPADWmiSomEntry {
         return "$DN"
     }
     $id = '{' + ([guid]::NewGuid().ToString().ToUpperInvariant()) + '}'
-    $container = [ADSI]"LDAP://CN=SOM,CN=WMIPolicy,CN=System,$DomainDN"
+    $container = New-NSPADDirectoryEntry -DistinguishedName "CN=SOM,CN=WMIPolicy,CN=System,$DomainDN" -Server $Server
     $entry = $container.Create('msWMI-Som', "CN=$id")
     $entry.Put('msWMI-Name', $Name)
     $entry.Put('msWMI-Parm1', $(if ($Description) { $Description } else { ' ' }))
@@ -87,8 +88,8 @@ function Save-NSPADWmiSomEntry {
 
 function Set-NSPADGpoWqlFilterAttribute {
     # Points a GPO (by its {GUID}) at a WMI filter id, or clears it with an empty -WmiFilterId.
-    param([Parameter(Mandatory)][string]$DomainDN, [Parameter(Mandatory)][string]$DnsRoot, [Parameter(Mandatory)][string]$GpoGuid, [AllowEmptyString()][string]$WmiFilterId)
-    $entry = [ADSI]"LDAP://CN={$($GpoGuid.Trim('{}'))},CN=Policies,CN=System,$DomainDN"
+    param([Parameter(Mandatory)][string]$DomainDN, [Parameter(Mandatory)][string]$DnsRoot, [Parameter(Mandatory)][string]$GpoGuid, [AllowEmptyString()][string]$WmiFilterId, [string]$Server)
+    $entry = New-NSPADDirectoryEntry -DistinguishedName "CN={$($GpoGuid.Trim('{}'))},CN=Policies,CN=System,$DomainDN" -Server $Server
     if ($WmiFilterId) { $entry.Put('gPCWQLFilter', "[$DnsRoot;$WmiFilterId;0]") } else { $entry.PutEx(1, 'gPCWQLFilter', $null) }
     $entry.SetInfo()
 }

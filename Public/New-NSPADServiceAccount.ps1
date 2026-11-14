@@ -17,6 +17,13 @@ function New-NSPADServiceAccount {
         Get-NSPADDomainInfo found: AES Kerberos only, enabled, the allowed computers as
         PrincipalsAllowedToRetrieveManagedPassword. Then install it on each of those computers
         (Install-NSPADServiceAccount) - a fresh gMSA can take a few minutes to replicate.
+    .PARAMETER Server
+        A domain controller. The domain lookup, every check and the create all go to it. With
+        -DomainInfo as well, both must name the same DC, or the command stops before anything is
+        read or written.
+    .PARAMETER DomainInfo
+        A Get-NSPADDomainInfo result, to reuse the DC it found. Default: look one up (on -Server
+        when given).
     .EXAMPLE
         Set-NSPDryRun -Enabled $false
         New-NSPADServiceAccount -Name 'svc_transfer' -AllowedComputer 'APP01' -Description 'Runs the nightly file transfer'
@@ -30,11 +37,12 @@ function New-NSPADServiceAccount {
         [string]$DNSHostName,
         [ValidateRange(1, 3650)][int]$PasswordIntervalDays = 30,
         [switch]$SkipKdsCheck,
-        [PSTypeName('NSP.ActiveDirectory.DomainInfo')]$DomainInfo
+        [PSTypeName('NSP.ActiveDirectory.DomainInfo')]$DomainInfo,
+        [ValidateNotNullOrEmpty()][string]$Server
     )
 
     $bare = $Name.TrimEnd('$')
-    if (-not $DomainInfo) { $DomainInfo = Get-NSPADDomainInfo }
+    $DomainInfo = Resolve-NSPADDomainInfoForServer -DomainInfo $DomainInfo -Server $Server
 
     # Under -WhatIf a missing computer or KDS root key is a finding to show, not a reason to stop:
     # a preview of a forest that is still being built should list everything that is not there yet.

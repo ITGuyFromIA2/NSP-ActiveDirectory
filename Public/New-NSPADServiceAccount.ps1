@@ -6,7 +6,12 @@ function New-NSPADServiceAccount {
         Checks first, over LDAP: an existing gMSA of that name is returned unchanged (with a warning
         if the allowed computers differ); the forest needs a usable KDS root key (one is created with
         Add-KdsRootKey on a DC, and gMSAs can use it about 10 hours later). A KDS key that can't be
-        seen may mean this account can't read it - -SkipKdsCheck goes ahead anyway.
+        seen may mean this account can't read it - -SkipKdsCheck goes ahead anyway. Get-NSPADKdsRootKeyStatus
+        reads the key; New-NSPADKdsRootKey creates one.
+
+        Under -WhatIf a missing computer account or KDS root key is reported as a warning and the
+        preview goes on, so one preview lists everything that is missing. Without -WhatIf both
+        still stop the command before anything is created.
 
         The account is created with New-ADServiceAccount (AD module) against the DC that
         Get-NSPADDomainInfo found: AES Kerberos only, enabled, the allowed computers as
@@ -31,11 +36,18 @@ function New-NSPADServiceAccount {
     $bare = $Name.TrimEnd('$')
     if (-not $DomainInfo) { $DomainInfo = Get-NSPADDomainInfo }
 
-    $computers = foreach ($c in $AllowedComputer) {
+    # Under -WhatIf a missing computer or KDS root key is a finding to show, not a reason to stop:
+    # a preview of a forest that is still being built should list everything that is not there yet.
+    $preview = [bool]$WhatIfPreference
+    $computers = @(foreach ($c in $AllowedComputer) {
         $found = Get-NSPADComputer -Name $c -DomainInfo $DomainInfo
-        if (-not $found) { throw "No computer account '$c' in $($DomainInfo.DNSRoot)." }
+        if (-not $found) {
+            if (-not $preview) { throw "No computer account '$c' in $($DomainInfo.DNSRoot)." }
+            Write-Warning "Preview: no computer account '$c' in $($DomainInfo.DNSRoot). The real run would stop here."
+            continue
+        }
         $found
-    }
+    })
 
     $existing = Get-NSPADServiceAccount -Name $bare -DomainInfo $DomainInfo
     if ($existing) {
@@ -49,7 +61,8 @@ function New-NSPADServiceAccount {
         $kds = Get-NSPADKdsRootKeyStatus -DomainInfo $DomainInfo
         if (-not $kds.Usable) {
             $why = if ($kds.Visible) { 'the KDS root key is not usable yet (gMSAs can use it about 10 hours after Add-KdsRootKey)' } else { 'no KDS root key is visible - create one on a DC (Add-KdsRootKey -EffectiveImmediately, then wait about 10 hours), or pass -SkipKdsCheck if this account just cannot read it' }
-            throw "Can't create gMSA '$bare': $why."
+            if (-not $preview) { throw "Can't create gMSA '$bare': $why." }
+            Write-Warning "Preview: can't create gMSA '$bare': $why. The real run would stop here."
         }
     }
 

@@ -15,15 +15,3 @@ function ConvertFrom-NSPADGmsaMembership {
     }
 }
 
-function Get-NSPADKdsRootKeyStatus {
-    # Whether the forest has a KDS root key gMSAs can use (msKds-ProvRootKey objects under
-    # CN=Master Root Keys). Reading them needs Domain Admin-level rights: none visible can also mean
-    # "not allowed to see", which the caller reports as such.
-    param([Parameter(Mandatory)]$DomainInfo)
-    # The forest's configuration partition (from RootDSE), not one built from the domain DN: a child domain's differs.
-    $configDn = $DomainInfo.ConfigurationDN
-    $keys = @(Read-NSPADLdap -Server $DomainInfo.Server -SearchBase "CN=Master Root Keys,CN=Group Key Distribution Service,CN=Services,$configDn" `
-            -Filter '(objectClass=msKds-ProvRootKey)' -Property 'cn', 'msKds-UseStartTime' -Scope OneLevel)
-    $usable = @($keys | Where-Object { $_['mskds-usestarttime'] -and [DateTime]::FromFileTimeUtc([int64]$_['mskds-usestarttime']) -le [DateTime]::UtcNow })
-    [pscustomobject]@{ Visible = $keys.Count; Usable = $usable.Count }
-}

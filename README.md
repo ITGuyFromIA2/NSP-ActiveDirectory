@@ -27,6 +27,7 @@ in `%ProgramData%\NSP\Toolkit\AD\Answers`.
 | `Get-NSPADDomainInfo` / `Get-NSPADComputer` | Domain names, DN, PDC emulator, and computer accounts over the DC locator and LDAP - no AD module or AD Web Services needed, so a sick DC or broken ADWS doesn't block them. |
 | `Get-NSPADUser` | Paged user inventory by exact identity, wildcard filter or all users; separate explicit forest scope. See user inventory below. |
 | `Get-NSPADServiceAccount` / `Test-NSPADServiceAccount` / `New-NSPADServiceAccount` / `Install-NSPADServiceAccount` | Group managed service accounts: read and readiness checks over LDAP (including "may this computer retrieve the password", through its groups); create (checks the KDS root key) and install with the AD module. |
+| `Get-NSPADKdsRootKeyStatus` / `New-NSPADKdsRootKey` | The KDS root key that gMSAs need: a read-only status over LDAP (usable, not yet usable, none visible, cannot read), and a gated create for a forest that has none. The start time is mandatory and may not be in the past. |
 | `Get-NSPADScaffoldPlan` / `New-NSPADVpnGroupScaffold` / `Get-NSPADPurposeGroupDefault` | The VPN group/OU scaffold: `VPNGroups\` (main VPN group) and `VPNGroups\FWRules\` (VPNFW purpose groups), named from the client's answers or generic defaults. |
 | `New-NSPADOrganizationalUnit` / `New-NSPADGroup` / `Add-NSPADGroupMember` | Idempotent AD primitives (create only what is missing). |
 | `Get-NSPADOrganizationalUnitChild` / `Select-NSPADOrganizationalUnit` | One-level OU listing and the interactive OU browser. |

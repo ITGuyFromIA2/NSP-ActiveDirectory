@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- New: `Get-NSPADKdsRootKeyStatus` (read-only; it was an internal helper) says whether the forest has a KDS root key that gMSAs can use yet, and when the earliest one starts. It returns a status instead of throwing when the read fails.
+- New: `New-NSPADKdsRootKey` creates the KDS root key on a forest that has none. `-EffectiveTime` is mandatory and a time in the past is refused. It creates nothing when a key already exists, follows the dry run and `-WhatIf`, and reads the key back before reporting success.
+- `New-NSPADServiceAccount -WhatIf` warns about a missing computer account or KDS root key and carries on with the preview. Without `-WhatIf` both still stop the command.
 - `Import-NSPADGpoBackup` stops before importing when a domain name cannot be read or the named WMI filter does not exist. Before, the GPO was imported and the command then threw, leaving a GPO with no filter or link and no result.
 - `Import-NSPADGpoBackup` reports `WmiFilter` and `Linked` as read back from the directory. Before, they repeated what was asked for, so `Linked` was True even when a dry run skipped the link.
 - `New-NSPADAutoEnrollGpo` throws when the GroupPolicy module is missing (it printed and returned), throws when the domain name cannot be read and there is no logon domain (it built the link target `DC=`), and throws without linking when any value could not be set (it printed and linked anyway). The manager menu shows the message and stays open.

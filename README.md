@@ -96,15 +96,19 @@ With it, the function returns one `NSP.ActiveDirectory.WriteOutcome`:
 | `Operation`, `Target` | The function, and what was asked for |
 | `Outcome` | `Created`, `Updated`, `AlreadyPresent`, `Previewed` (dry run or `-WhatIf`), `Skipped` (confirmation declined) or `Failed` |
 | `ObservedTarget` | Only what a directory read returned. Empty when nothing was read |
-| `ObservedMatch` | `Created` and `Updated`: a fresh read after the write matched the plan. `AlreadyPresent`: the existing object matched identity and planned properties. Otherwise False |
+| `ObservedMatch` | `Created` and `Updated`: a fresh read after the write matched the plan. `AlreadyPresent`: the existing object matched identity and planned properties (one exception: `New-NSPADKdsRootKey`, below). Otherwise False |
 | `Server` | The DC every directory call used, or empty when none was pinned or part of the work is local |
 | `ErrorCode` | `Failed` only: `PreconditionFailed`, `NotFound`, `Conflict`, `WriteFailed`, `ReadBackFailed` (the change may already have happened; nothing is rolled back) or `Unexpected` (reserved) |
 
 - **Check `Outcome`.** An expected directory failure is returned as `Failed`, not thrown.
   Parameter errors, ambiguous targeting (`-Server` against `-DomainInfo`) and module bugs still throw.
-- **No message is carried.** The object has no exception text, and the `-AsResult` path prints only
-  the operation and the code, because objects and host output both reach logs and transcripts.
-  Run the same call without `-AsResult` to see the directory's own error.
+  A blank `-Server` (empty or whitespace only) is a parameter error: it throws before anything is
+  read or written, with or without `-AsResult`. Leave `-Server` out to let each cmdlet pick a DC.
+- **No message is carried on the object, but the host is not clean.** The object has no exception
+  text, and the module's own outcome line prints only the operation and the code. A failed write
+  step still prints the directory's own error on the host, as `-> ERROR: <message>`, through
+  NSP.Toolkit's `Invoke-NSPStep`. A transcript or captured host output of a failed write can
+  therefore contain that text; treat it like any other log of directory errors.
 - **It is the module's own observation, not proof.** It is not a management-plane step result and
   sets no `verified` flag. A management plane takes its own fresh read before it treats a step as
   applied, and treats `Previewed` and `Skipped` as not applied.
@@ -118,6 +122,11 @@ With it, the function returns one `NSP.ActiveDirectory.WriteOutcome`:
 - **`Updated` from `Import-NSPADGpoBackup` means "overwrote an existing GPO".** The backup is not
   compared with that GPO first, so it does not mean drift was found. Elsewhere, `Updated` follows a
   comparison that found a difference.
+- **One exception: `New-NSPADKdsRootKey -AsResult` reports presence only.** When a KDS root key is
+  already visible it returns `AlreadyPresent`, and `ObservedMatch` there means "at least one KDS
+  root key was read", nothing more. `-EffectiveTime` is a request for the key this call would
+  create; it is not compared with an existing key. The outcome does not say the key is usable yet
+  or that gMSA steps may proceed. `Get-NSPADKdsRootKeyStatus` is the readiness check.
 - **No rollback.** A `WriteFailed` may follow part of a multi-step change, and a `ReadBackFailed`
   may follow a write that worked. The host says so.
 - **What a read cannot tell.** An LDAP search returns nothing, not an error, for an object that the

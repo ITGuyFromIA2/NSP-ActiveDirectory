@@ -195,6 +195,24 @@ Describe 'Every directory call goes to -Server, and none is pinned without it' {
         $script:Calls.Count | Should -Be 0
     }
 
+    # A blank value used to pass [ValidateNotNullOrEmpty()] and then count as "no server", so the
+    # call ran unpinned without an error. It is a parameter error on both paths: thrown, never a
+    # Failed outcome, and before any directory call.
+    It '<Fn> rejects a whitespace-only -Server before touching the directory, with and without -AsResult' -TestCases $cases {
+        param($Fn, $Expect, $Run)
+        foreach ($blank in '  ', "`t", " `t ") {
+            { & $Run @{ Server = $blank } } | Should -Throw '*-Server is blank*'
+            { & $Run @{ Server = $blank; AsResult = $true } } | Should -Throw '*-Server is blank*'
+        }
+        $script:Calls.Count | Should -Be 0
+    }
+
+    It 'a DC name with spaces around it is still accepted, and trimmed' {
+        $null = New-NSPADOrganizationalUnit -Name 'VPN' -Path 'DC=contoso,DC=example' -Server " $($script:DC) "
+        Get-CalledCommands | Should -Contain 'New-ADOrganizationalUnit'
+        Get-CallsOffTarget $script:DC | Should -BeNullOrEmpty
+    }
+
     It 'Import-NSPADGpoBackup reads its result back from the same DC it wrote to' {
         $b = New-FakeGpoBackup (Join-Path $TestDrive ('b_' + [guid]::NewGuid().ToString('N')))
         $r = Import-NSPADGpoBackup -Path $b -WmiFilterName $script:FilterName -LinkAtDomainRoot -Server $script:DC
@@ -270,6 +288,17 @@ Describe 'New-NSPADServiceAccount -Server' {
         $d = [pscustomobject]@{ PSTypeName = 'NSP.ActiveDirectory.DomainInfo'; Server = 'dc01.contoso.example'; DNSRoot = 'contoso.example' }
         { New-NSPADServiceAccount -Name 'svc_new' -AllowedComputer 'APP01' -DomainInfo $d -Server $script:DC } | Should -Throw '*name different domain controllers*'
         Should -Invoke -ModuleName NSP.ActiveDirectory Get-NSPADComputer -Times 0 -Exactly
+        Should -Invoke -ModuleName NSP.ActiveDirectory Read-NSPADLdap -Times 0 -Exactly
+    }
+
+    It 'rejects a whitespace-only -Server before any read, with and without -AsResult' {
+        foreach ($blank in '  ', "`t") {
+            { New-NSPADServiceAccount -Name 'svc_new' -AllowedComputer 'APP01' -Server $blank } | Should -Throw '*-Server is blank*'
+            { New-NSPADServiceAccount -Name 'svc_new' -AllowedComputer 'APP01' -Server $blank -AsResult } | Should -Throw '*-Server is blank*'
+        }
+        Should -Invoke -ModuleName NSP.ActiveDirectory Get-NSPADDomainInfo -Times 0 -Exactly
+        Should -Invoke -ModuleName NSP.ActiveDirectory Get-NSPADComputer -Times 0 -Exactly
+        Should -Invoke -ModuleName NSP.ActiveDirectory Get-NSPADServiceAccount -Times 0 -Exactly
         Should -Invoke -ModuleName NSP.ActiveDirectory Read-NSPADLdap -Times 0 -Exactly
     }
 }

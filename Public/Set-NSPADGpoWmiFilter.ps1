@@ -15,10 +15,13 @@ function Set-NSPADGpoWmiFilter {
     .PARAMETER Server
         A domain controller. The domain read, the GPO read, the filter lookup and the ADSI write
         all go to it. Default: each cmdlet picks one, and ADSI binds serverless.
+        A blank value (empty or whitespace only) is refused before anything is read or written.
     .PARAMETER AsResult
         Return an NSP.ActiveDirectory.WriteOutcome instead of nothing (Updated, or AlreadyPresent
         when the GPO already has that setting). A missing filter is Failed/NotFound. CHECK Outcome.
         The module's own observation, not management-plane verification.
+        The outcome carries no error text, but a failed write step still prints the directory's own
+        error on the host (NSP.Toolkit's Invoke-NSPStep), so a transcript of a failed write can hold it.
     .EXAMPLE
         Set-NSPADGpoWmiFilter -GpoName 'NSP - TLS1 - Enable TLS 1.2' -WmiFilterName 'NSP_AT - All Servers'
     #>
@@ -27,7 +30,7 @@ function Set-NSPADGpoWmiFilter {
         [Parameter(Mandatory)][string]$GpoName,
         [Parameter(Mandatory, ParameterSetName = 'Set')][string]$WmiFilterName,
         [Parameter(Mandatory, ParameterSetName = 'Clear')][switch]$Clear,
-        [ValidateNotNullOrEmpty()][string]$Server,
+        [ValidateNotNullOrEmpty()][ValidateScript({ Test-NSPADServerArgument $_ })][string]$Server,
         [switch]$AsResult
     )
     if ($AsResult) { return (Invoke-NSPADGpoWmiFilterOutcome -Cmdlet $PSCmdlet -GpoName $GpoName -WmiFilterName $WmiFilterName -Clear ([bool]$Clear) -Server $Server) }

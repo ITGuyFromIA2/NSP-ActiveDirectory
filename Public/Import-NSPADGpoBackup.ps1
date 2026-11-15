@@ -32,6 +32,7 @@ function Import-NSPADGpoBackup {
         A domain controller. The domain-name reads, the filter lookup, Import-GPO, the filter and
         link steps and both read-backs all go to it, so the read-back never looks at a DC the
         import has not reached yet. Default: each cmdlet picks one.
+        A blank value (empty or whitespace only) is refused before anything is read or written.
     .PARAMETER AsResult
         Return an NSP.ActiveDirectory.WriteOutcome instead of the GpoImport object: Created (no GPO
         of that name before), Updated (Import-GPO overwrote one: the backup is not compared with the
@@ -39,6 +40,8 @@ function Import-NSPADGpoBackup {
         GPO, the requested filter and the requested link all read back. Unlike the default path,
         Import-GPO itself follows NSP.Toolkit's dry run in this mode: with dry run on, nothing is
         imported and the outcome is Previewed. CHECK Outcome. Not management-plane verification.
+        The outcome carries no error text, but a failed write step still prints the directory's own
+        error on the host (NSP.Toolkit's Invoke-NSPStep), so a transcript of a failed write can hold it.
     .EXAMPLE
         Get-NSPADGpoCatalog -Path '\\fileserver\GPO' | Where-Object DisplayName -like '*TLS 1.2*' |
             ForEach-Object { Import-NSPADGpoBackup -Path $_.Path -WmiFilterName 'NSP_AT - All Servers' -LinkAtDomainRoot }
@@ -52,7 +55,7 @@ function Import-NSPADGpoBackup {
         [string]$WmiFilterName,
         [switch]$LinkAtDomainRoot,
         [Collections.IDictionary]$Replace,
-        [ValidateNotNullOrEmpty()][string]$Server,
+        [ValidateNotNullOrEmpty()][ValidateScript({ Test-NSPADServerArgument $_ })][string]$Server,
         [switch]$AsResult
     )
     process {

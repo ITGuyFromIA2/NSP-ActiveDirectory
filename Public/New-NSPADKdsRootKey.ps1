@@ -7,6 +7,9 @@ function New-NSPADKdsRootKey {
         A KDS root key is forest-wide and is not meant to be removed, so this does as little as it can:
 
           - If any KDS root key is already visible, it creates nothing and returns the status.
+            -EffectiveTime is a request for the key this call would create. It is NOT compared
+            with a key that already exists, and an existing key may not be usable yet.
+            Get-NSPADKdsRootKeyStatus is the readiness check before gMSA work.
           - -EffectiveTime is mandatory. There is no default, and a time in the past is refused.
             Domain controllers wait about 10 hours after the effective time before they use a key,
             so that every DC has it first. A start time 10 hours in the past skips that wait.
@@ -27,8 +30,14 @@ function New-NSPADKdsRootKey {
     .PARAMETER AsResult
         Return an NSP.ActiveDirectory.WriteOutcome instead of the status: AlreadyPresent when any
         key is visible (whatever its start time), Created when one is visible after the create.
+        AlreadyPresent here is for PRESENCE ONLY, an exception to the general outcome rule:
+        ObservedMatch means "at least one KDS root key was read", nothing more. -EffectiveTime is
+        not compared with an existing key, and the outcome does not say the key is usable or that
+        gMSA steps may proceed: Get-NSPADKdsRootKeyStatus is the readiness check.
         Server is always empty: the reads use the DomainInfo DC but Add-KdsRootKey runs here.
         A past -EffectiveTime still throws. CHECK Outcome.
+        The outcome carries no error text, but a failed write step still prints the directory's own
+        error on the host (NSP.Toolkit's Invoke-NSPStep), so a transcript of a failed write can hold it.
     .EXAMPLE
         Set-NSPDryRun -Enabled $false
         New-NSPADKdsRootKey -EffectiveTime (Get-Date)

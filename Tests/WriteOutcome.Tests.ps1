@@ -4,7 +4,9 @@
       - Created/Updated only after a fresh read matched; AlreadyPresent only when identity AND
         planned properties match; ObservedTarget only from a read.
       - Expected failures come back as Failed + a closed ErrorCode; ambiguity and bugs still throw.
-      - No exception text on the object or on the host; never an MP-4 step result.
+      - No exception text on the object or in the module's own host lines; never an MP-4 step
+        result. (NSP.Toolkit's Invoke-NSPStep does print a failed write step's error: see the
+        Describe that does not silence NSP.Toolkit.)
       - Previewed (dry run / -WhatIf) and Skipped (declined confirmation) are distinct.
       - Without -AsResult nothing changes.
     No real AD, GPO or LDAP is touched: cmdlets are stubbed when RSAT is missing and mocked
@@ -234,7 +236,7 @@ Describe 'What becomes a result and what still throws' {
     It 'rethrows when a body leaks extra output (a module bug), instead of guessing' {
         { InModuleScope NSP.ActiveDirectory { Invoke-NSPADOutcome -Operation X -Target T -Body { param($c) 'stray'; @{ Outcome = 'Previewed' } } } } | Should -Throw '*not one hashtable*'
     }
-    It 'puts no exception text on the object or on the host' {
+    It 'puts no exception text on the object or in the module''s own host lines' {
         $secret = $script:Secret
         $r = InModuleScope NSP.ActiveDirectory -Parameters @{ S = $secret } { param($S) Invoke-NSPADOutcome -Operation X -Target T -Body { param($c) $c.Phase = 'Write'; throw $S } }
         ($r | ConvertTo-Json) | Should -Not -Match 'SECRET-DETAIL'
@@ -260,6 +262,64 @@ Describe 'What becomes a result and what still throws' {
     It 'says on the host that a read-back failure may leave the change made' {
         $null = InModuleScope NSP.ActiveDirectory { Invoke-NSPADOutcome -Operation X -Target T -Body { param($c) $c.Phase = 'ReadBack'; throw 'not visible' } }
         $script:Host_ | Should -Match 'may already have been made'
+    }
+}
+
+Describe 'A failed write step: what reaches the host when NSP.Toolkit is NOT silenced' {
+    # Every other test in this file replaces NSP.Toolkit's Write-Host with nothing, so it sees only
+    # this module's own lines. These keep the Toolkit's output and pin what really happens, next to
+    # the public text that describes it, so the two cannot drift apart unnoticed.
+    BeforeEach {
+        $env:NSP_TOOLKIT_ROOT = Join-Path $TestDrive ('tk_' + [guid]::NewGuid().ToString('N'))
+        Initialize-FakeDirectory
+        $script:ToolkitHost = ''
+        Mock -ModuleName NSP.Toolkit Write-Host { $script:ToolkitHost += "$Object`n" }
+        Set-NSPDryRun -Enabled $false -Confirm:$false
+        $script:RepoRoot = Split-Path -Parent $PSScriptRoot
+        function script:Get-FlatText([string]$RelativePath) { ((Get-Content -LiteralPath (Join-Path $script:RepoRoot $RelativePath) -Raw) -replace '\s+', ' ') }
+    }
+    AfterEach { Set-NSPDryRun -Enabled $true -Confirm:$false }
+
+    It 'the object and the module''s own lines carry no error text, Invoke-NSPStep prints it, and README and CHANGELOG say so' {
+        $script:D.FailWrites = $true
+        $r = New-NSPADOrganizationalUnit -Name 'VPN' -Path 'DC=contoso,DC=example' -AsResult
+        Assert-OutcomeContract $r
+        $r.Outcome | Should -Be 'Failed'
+        $r.ErrorCode | Should -Be 'WriteFailed'
+        ($r | Out-String) | Should -Not -Match 'SECRET-DETAIL'
+        # This module's own lines: the operation and the code, no directory text.
+        $script:Host_ | Should -Match 'New-NSPADOrganizationalUnit failed \(WriteFailed\)'
+        $script:Host_ | Should -Not -Match 'SECRET-DETAIL'
+        # NSP.Toolkit's step line: the directory's own error, on the host.
+        $script:ToolkitHost | Should -Match '-> ERROR: .*SECRET-DETAIL'
+
+        # The public text must describe exactly that, and must not promise a clean host.
+        $said = 'failed write step still prints the directory''s own error on the host'
+        foreach ($doc in 'README.md', 'CHANGELOG.md') {
+            $text = Get-FlatText $doc
+            $text | Should -Match $said -Because "$doc must say that a failed write step prints the directory error"
+            $text | Should -Match 'Invoke-NSPStep'
+            $text | Should -Not -Match 'No exception text is carried or printed' -Because "$doc must not promise a clean host"
+            $text | Should -Not -Match 'the `-AsResult` path prints only the operation and the code' -Because "$doc must not promise a clean host"
+        }
+    }
+
+    It '<Fn>: the -AsResult help says a failed write step prints the directory error' -TestCases @(
+        @{ Fn = 'New-NSPADOrganizationalUnit' }, @{ Fn = 'New-NSPADGroup' }, @{ Fn = 'Add-NSPADGroupMember' }, @{ Fn = 'New-NSPADGpoLink' },
+        @{ Fn = 'Set-NSPADGpoWmiFilter' }, @{ Fn = 'New-NSPADWmiFilter' }, @{ Fn = 'Import-NSPADGpoBackup' }, @{ Fn = 'New-NSPADAutoEnrollGpo' },
+        @{ Fn = 'New-NSPADServiceAccount' }, @{ Fn = 'Install-NSPADServiceAccount' }, @{ Fn = 'New-NSPADKdsRootKey' }
+    ) {
+        param($Fn)
+        $help = (((Get-Help $Fn -Parameter AsResult).description.Text -join ' ') -replace '\s+', ' ')
+        $help | Should -Match 'failed write step still prints the directory''s own error on the host'
+        $help | Should -Match 'Invoke-NSPStep'
+    }
+
+    It 'a write that succeeds leaves no error line from the step' {
+        $r = New-NSPADOrganizationalUnit -Name 'VPN' -Path 'DC=contoso,DC=example' -AsResult
+        $r.Outcome | Should -Be 'Created'
+        $script:ToolkitHost | Should -Match '-> done'
+        $script:ToolkitHost | Should -Not -Match 'ERROR'
     }
 }
 
@@ -710,6 +770,31 @@ Describe '-AsResult on each write function' {
             $a = New-NSPADKdsRootKey -EffectiveTime (Get-Date) -AsResult -Confirm:$false
             Assert-OutcomeContract $a; $a.Outcome | Should -Be 'Created'; $a.Server | Should -BeNullOrEmpty
             (New-NSPADKdsRootKey -EffectiveTime (Get-Date) -AsResult -Confirm:$false).Outcome | Should -Be 'AlreadyPresent'
+        }
+        It 'AlreadyPresent is presence only: a visible key that is not usable yet, with another start time, is AlreadyPresent with zero writes' {
+            # The operation-specific exception (README, help): ObservedMatch means "at least one KDS
+            # root key was read". -EffectiveTime is not compared, and usability is not claimed.
+            Mock -ModuleName NSP.ActiveDirectory Get-NSPADKdsRootKeyStatus {
+                $script:Calls.Add([pscustomobject]@{ Cmd = 'Get-NSPADKdsRootKeyStatus'; Server = '' })
+                [pscustomobject]@{ Status = 'NotYetUsable'; Visible = 1; Usable = 0; EarliestUseUtc = [DateTime]::UtcNow.AddDays(30) }
+            }
+            $r = New-NSPADKdsRootKey -EffectiveTime (Get-Date) -AsResult -Confirm:$false
+            Assert-OutcomeContract $r
+            $r.Outcome | Should -Be 'AlreadyPresent'
+            $r.ObservedMatch | Should -BeTrue
+            $r.ObservedTarget | Should -Match '1 visible'
+            @($script:Calls.Cmd) | Should -Contain 'Get-NSPADKdsRootKeyStatus'
+            @($script:Calls.Cmd) | Should -Not -Contain 'Add-KdsRootKey'
+            Get-FakeWrites | Should -BeNullOrEmpty
+            # The public text must state the exception next to the behaviour it describes.
+            $root = Split-Path -Parent $PSScriptRoot
+            $said = 'at least one KDS root key was read'
+            foreach ($doc in 'README.md', 'CHANGELOG.md') {
+                ((Get-Content -LiteralPath (Join-Path $root $doc) -Raw) -replace '\s+', ' ') | Should -Match $said -Because "$doc must state the presence-only exception"
+            }
+            $help = (((Get-Help New-NSPADKdsRootKey -Parameter AsResult).description.Text -join ' ') -replace '\s+', ' ')
+            $help | Should -Match $said
+            $help | Should -Match 'Get-NSPADKdsRootKeyStatus is the readiness check'
         }
         It 'Failed/PreconditionFailed when the keys cannot be read' {
             Mock -ModuleName NSP.ActiveDirectory Get-NSPADKdsRootKeyStatus { [pscustomobject]@{ Status = 'CannotRead'; Visible = 0; Usable = 0 } }

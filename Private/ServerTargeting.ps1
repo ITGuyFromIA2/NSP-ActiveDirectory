@@ -2,8 +2,21 @@
     One domain controller per call. A write function that takes -Server passes the same value to
     every AD and Group Policy cmdlet and every ADSI bind it makes, so its existence check, its write
     and its read-back all go to that DC. Without -Server nothing changes: each cmdlet picks a DC as
-    it always has.
+    it always has. A blank -Server (empty or whitespace only) is refused when the parameter binds.
 #>
+
+function Test-NSPADServerArgument {
+    # Parameter validation for the public -Server ([ValidateScript()] on the nine write functions).
+    # [ValidateNotNullOrEmpty()] lets '  ' through, and the helpers below read a blank value as
+    # "no server", so the call would run unpinned without an error. Refused at binding instead:
+    # before any directory read or write, and thrown on the -AsResult path too (a parameter error
+    # is never a Failed outcome). Leaving -Server out never runs this.
+    param([AllowEmptyString()][AllowNull()][string]$Server)
+    if ([string]::IsNullOrWhiteSpace($Server)) {
+        throw '-Server is blank. Name a domain controller, or leave -Server out so that each cmdlet picks one. Nothing was read or changed.'
+    }
+    return $true
+}
 
 function Get-NSPADServerSplat {
     # @{ Server = '<dc>' } when a DC was named, otherwise an empty hashtable. Splat it into every

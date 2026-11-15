@@ -7,16 +7,19 @@
       ObservedTarget  only what a directory READ returned; never the requested name
       ObservedMatch   Created/Updated: a fresh read AFTER the write matched the plan.
                       AlreadyPresent: the existence read matched identity AND the planned properties.
+                      (Exception: New-NSPADKdsRootKey is presence only - "at least one key was
+                      read"; -EffectiveTime is not compared and usability is not claimed.)
                       Always False for Previewed, Skipped and Failed.
       Server          the DC every directory call in the call used, or $null when none was pinned
                       (or when part of the work is local, such as Add-KdsRootKey)
       ErrorCode       set only for Failed: PreconditionFailed | NotFound | Conflict | WriteFailed |
                       ReadBackFailed | Unexpected (reserved; nothing produces it yet)
 
-    There is deliberately NO message or exception text on the object, and the outcome path does
-    not print one either: objects and host output both reach serialization, transcripts and logs.
-    The console gets the operation and the code only. (NSP.Toolkit's Invoke-NSPStep still prints
-    a failing step's own error, as it does for every caller; that is outside this module.)
+    There is deliberately NO message or exception text on the object, and this module's own
+    outcome line prints the operation and the code only. That is NOT the whole host output: a
+    write runs as an NSP.Toolkit Invoke-NSPStep, which prints "-> ERROR: <exception message>" for
+    a failing step, as it does for every caller. So a transcript of a failed write step can hold
+    the directory's own error text. Changing that needs a change in NSP.Toolkit (not decided).
 
     This is module-local observation. It is NOT a management-plane step result and never sets
     an MP-4 'verified' flag; a caller must check Outcome and take its own fresh read.
@@ -126,8 +129,8 @@ function Invoke-NSPADOutcome {
     } catch {
         $code = Resolve-NSPADErrorCode -ErrorRecord $_ -Phase $ctx.Phase
         if (-not $code) { throw }
-        # No exception text anywhere from here: not on the object, not on the host (transcripts
-        # capture both). Run the same call without -AsResult to see the directory's own error.
+        # No exception text from here: not on the object, not in the lines below. (A failed write
+        # step has already printed the directory's error through NSP.Toolkit's Invoke-NSPStep.)
         Write-Host "  $Operation failed ($code). Run it without -AsResult to see the error." -ForegroundColor Red
         # Nothing is ever rolled back. A failed write may have changed part of what was planned
         # (for example some GPO values); a failed read-back may follow a write that worked.

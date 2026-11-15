@@ -9,10 +9,13 @@ function New-NSPADGpoLink {
     .PARAMETER Server
         A domain controller. The link read and the link write both go to it. Default: the
         GroupPolicy module's own choice (normally the PDC emulator).
+        A blank value (empty or whitespace only) is refused before anything is read or written.
     .PARAMETER AsResult
         Return an NSP.ActiveDirectory.WriteOutcome instead of nothing. An expected directory failure
         comes back as Outcome Failed with an ErrorCode instead of an exception, so CHECK Outcome.
         The module's own observation, not management-plane verification.
+        The outcome carries no error text, but a failed write step still prints the directory's own
+        error on the host (NSP.Toolkit's Invoke-NSPStep), so a transcript of a failed write can hold it.
     .EXAMPLE
         New-NSPADGpoLink -GpoName 'NSP - Certificate Auto-Enrollment' -TargetDN 'DC=example,DC=com'
     #>
@@ -20,7 +23,7 @@ function New-NSPADGpoLink {
     param(
         [Parameter(Mandatory)][string]$GpoName,
         [Parameter(Mandatory)][string]$TargetDN,
-        [ValidateNotNullOrEmpty()][string]$Server,
+        [ValidateNotNullOrEmpty()][ValidateScript({ Test-NSPADServerArgument $_ })][string]$Server,
         [switch]$AsResult
     )
     if ($AsResult) { return (Invoke-NSPADGpoLinkOutcome -Cmdlet $PSCmdlet -GpoName $GpoName -TargetDN $TargetDN -Server $Server) }

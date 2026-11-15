@@ -13,12 +13,15 @@ function New-NSPADAutoEnrollGpo {
     .PARAMETER Server
         A domain controller. The domain read, the GPO read and create, every value and the link all
         go to it. Default: each cmdlet picks one.
+        A blank value (empty or whitespace only) is refused before anything is read or written.
     .PARAMETER AsResult
         Return an NSP.ActiveDirectory.WriteOutcome instead of nothing. The GPO's values and link are
         compared first: all already right is AlreadyPresent with nothing written; otherwise Created
         (new GPO) or Updated, decided by reading every value and the link back. This mode never
         guesses the domain from the logon session: pass -DomainDn or let Get-ADDomain answer.
         CHECK Outcome. The module's own observation, not management-plane verification.
+        The outcome carries no error text, but a failed write step still prints the directory's own
+        error on the host (NSP.Toolkit's Invoke-NSPStep), so a transcript of a failed write can hold it.
     .EXAMPLE
         New-NSPADAutoEnrollGpo -GpoName 'NSP - Certificate Auto-Enrollment'
     #>
@@ -28,7 +31,7 @@ function New-NSPADAutoEnrollGpo {
         [string]$GpoName = 'NSP - Certificate Auto-Enrollment',
         [switch]$IncludeComputerConfig,
         [string]$DomainDn,
-        [ValidateNotNullOrEmpty()][string]$Server,
+        [ValidateNotNullOrEmpty()][ValidateScript({ Test-NSPADServerArgument $_ })][string]$Server,
         [switch]$AsResult
     )
     if ($AsResult) { return (Invoke-NSPADAutoEnrollGpoOutcome -Cmdlet $PSCmdlet -GpoName $GpoName -IncludeComputerConfig ([bool]$IncludeComputerConfig) -DomainDn $DomainDn -Server $Server) }

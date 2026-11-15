@@ -21,6 +21,7 @@ function New-NSPADServiceAccount {
         A domain controller. The domain lookup, every check and the create all go to it. With
         -DomainInfo as well, both must name the same DC, or the command stops before anything is
         read or written.
+        A blank value (empty or whitespace only) is refused before anything is read or written.
     .PARAMETER DomainInfo
         A Get-NSPADDomainInfo result, to reuse the DC it found. Default: look one up (on -Server
         when given).
@@ -30,6 +31,8 @@ function New-NSPADServiceAccount {
         missing computer is Failed/NotFound; no usable KDS key is Failed/PreconditionFailed.
         -Server and -DomainInfo naming different DCs still throws. CHECK Outcome. The module's
         own observation, not management-plane verification.
+        The outcome carries no error text, but a failed write step still prints the directory's own
+        error on the host (NSP.Toolkit's Invoke-NSPStep), so a transcript of a failed write can hold it.
     .EXAMPLE
         Set-NSPDryRun -Enabled $false
         New-NSPADServiceAccount -Name 'svc_transfer' -AllowedComputer 'APP01' -Description 'Runs the nightly file transfer'
@@ -44,7 +47,7 @@ function New-NSPADServiceAccount {
         [ValidateRange(1, 3650)][int]$PasswordIntervalDays = 30,
         [switch]$SkipKdsCheck,
         [PSTypeName('NSP.ActiveDirectory.DomainInfo')]$DomainInfo,
-        [ValidateNotNullOrEmpty()][string]$Server,
+        [ValidateNotNullOrEmpty()][ValidateScript({ Test-NSPADServerArgument $_ })][string]$Server,
         [switch]$AsResult
     )
     if ($AsResult) {

@@ -12,17 +12,20 @@ function New-NSPADWmiFilter {
     .PARAMETER Server
         A domain controller. The domain read, the filter lookup and the ADSI write all go to it.
         Default: Get-ADDomain picks one, and ADSI binds serverless.
+        A blank value (empty or whitespace only) is refused before anything is read or written.
     .PARAMETER AsResult
         Return one NSP.ActiveDirectory.WriteOutcome per filter instead of nothing: Created, Updated
         (queries or description drifted) or AlreadyPresent. CHECK Outcome. The module's own
         observation, not management-plane verification.
+        The outcome carries no error text, but a failed write step still prints the directory's own
+        error on the host (NSP.Toolkit's Invoke-NSPStep), so a transcript of a failed write can hold it.
     .EXAMPLE
         Get-NSPADWellKnownWmiFilter | New-NSPADWmiFilter
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]$Filter,
-        [ValidateNotNullOrEmpty()][string]$Server,
+        [ValidateNotNullOrEmpty()][ValidateScript({ Test-NSPADServerArgument $_ })][string]$Server,
         [switch]$AsResult
     )
     process {

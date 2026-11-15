@@ -11,6 +11,8 @@ function Install-NSPADServiceAccount {
         Return an NSP.ActiveDirectory.WriteOutcome instead: AlreadyPresent when the account already
         tests good here, Created when it tests good after the install, Failed/ReadBackFailed when it
         does not. Server is always empty: this acts on this computer. CHECK Outcome.
+        The outcome carries no error text, but a failed write step still prints the directory's own
+        error on the host (NSP.Toolkit's Invoke-NSPStep), so a transcript of a failed write can hold it.
     .EXAMPLE
         Set-NSPDryRun -Enabled $false
         Install-NSPADServiceAccount -Name 'svc_transfer'

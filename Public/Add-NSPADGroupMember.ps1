@@ -6,10 +6,13 @@ function Add-NSPADGroupMember {
     .PARAMETER Server
         A domain controller. The membership read and the add both go to it. Default: the AD
         module picks one for each cmdlet.
+        A blank value (empty or whitespace only) is refused before anything is read or written.
     .PARAMETER AsResult
         Return an NSP.ActiveDirectory.WriteOutcome instead of nothing. An expected directory failure
         comes back as Outcome Failed with an ErrorCode instead of an exception, so CHECK Outcome.
         The module's own observation, not management-plane verification.
+        The outcome carries no error text, but a failed write step still prints the directory's own
+        error on the host (NSP.Toolkit's Invoke-NSPStep), so a transcript of a failed write can hold it.
     .EXAMPLE
         Add-NSPADGroupMember -GroupIdentity 'CN=VPNFW_DNS_Group,OU=FWRules,...' -MemberIdentity 'CN=VPN_Staff,...'
     #>
@@ -17,7 +20,7 @@ function Add-NSPADGroupMember {
     param(
         [Parameter(Mandatory)][string]$GroupIdentity,
         [Parameter(Mandatory)][string]$MemberIdentity,
-        [ValidateNotNullOrEmpty()][string]$Server,
+        [ValidateNotNullOrEmpty()][ValidateScript({ Test-NSPADServerArgument $_ })][string]$Server,
         [switch]$AsResult
     )
     if ($AsResult) { return (Invoke-NSPADGroupMemberOutcome -Cmdlet $PSCmdlet -GroupIdentity $GroupIdentity -MemberIdentity $MemberIdentity -Server $Server) }

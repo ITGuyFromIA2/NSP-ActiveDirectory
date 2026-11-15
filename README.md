@@ -111,6 +111,19 @@ With it, the function returns one `NSP.ActiveDirectory.WriteOutcome`:
 - **`Import-NSPADGpoBackup -AsResult` honours dry run for `Import-GPO` too.** With dry run on,
   nothing is imported. The default path still imports and previews only the filter and the link,
   and stays that way until the single write gate (rank 6) is decided.
+- **Lookups are strict in this mode.** Every existence and value read uses `-ErrorAction Stop`.
+  Only a specific "not found" counts as absent: the AD module's identity-not-found error, a GPO name
+  missing from the full GPO list, or a GPO registry value reported as not set. An unreachable DC or
+  denied access is `Failed`, never "absent, so create or rewrite it". The default paths are unchanged.
+- **`Updated` from `Import-NSPADGpoBackup` means "overwrote an existing GPO".** The backup is not
+  compared with that GPO first, so it does not mean drift was found. Elsewhere, `Updated` follows a
+  comparison that found a difference.
+- **No rollback.** A `WriteFailed` may follow part of a multi-step change, and a `ReadBackFailed`
+  may follow a write that worked. The host says so.
+- **What a read cannot tell.** An LDAP search returns nothing, not an error, for an object that the
+  account is not allowed to see. That cannot be told apart from absence. For most functions the
+  create then fails (`WriteFailed`), but `New-NSPADWmiFilter` could add a second filter of the same
+  name, and `New-NSPADKdsRootKey` a second key.
 
 ```powershell
 $r = New-NSPADGroup -Name 'VPN_Staff' -Path 'OU=VPN,DC=example,DC=com' -Server 'dc01.example.com' -AsResult

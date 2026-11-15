@@ -29,7 +29,7 @@ BeforeAll {
         'Get-ADGroupMember'        = 'param($Identity, $Server)'
         'Add-ADGroupMember'        = 'param($Identity, $Members, $Server)'
         'Import-GPO'               = 'param($BackupId, $Path, $TargetName, [switch]$CreateIfNeeded, $Server)'
-        'Get-GPO'                  = 'param($Name, $Server)'
+        'Get-GPO'                  = 'param($Name, [switch]$All, $Server)'
         'New-GPO'                  = 'param($Name, $Server)'
         'Set-GPRegistryValue'      = 'param($Name, $Key, $ValueName, $Type, $Value, $Server)'
         'Get-GPRegistryValue'      = 'param($Name, $Key, $ValueName, $Server)'
@@ -64,6 +64,25 @@ BeforeAll {
         Set-Content -LiteralPath (Join-Path $guidDir 'bkupInfo.xml') -Value "<BackupInst xmlns=`"http://www.microsoft.com/GroupPolicy/GPOOperations/Manifest`"><GPOGuid><![CDATA[{AAAA}]]></GPOGuid><GPODomain><![CDATA[contoso.com]]></GPODomain><GPODomainController><![CDATA[DC.contoso.com]]></GPODomainController><BackupTime><![CDATA[2026-01-01T00:00:00]]></BackupTime><ID><![CDATA[$script:BackupGuid]]></ID><GPODisplayName><![CDATA[$script:GpoName]]></GPODisplayName></BackupInst>"
         Set-Content -LiteralPath (Join-Path $guidDir 'gpreport.xml') -Value '<r>contoso.com CONTOSO</r>'
         return $Root
+    }
+    # Every directory or local write the fakes can record. "Zero writes" means none of these ran.
+    $script:WriteCmds = @('New-ADOrganizationalUnit', 'New-ADGroup', 'Add-ADGroupMember', 'New-GPO', 'Import-GPO', 'Set-GPRegistryValue', 'New-GPLink',
+        'Save-NSPADWmiSomEntry', 'Set-NSPADGpoWqlFilterAttribute', 'New-ADServiceAccount', 'Add-KdsRootKey', 'Install-ADServiceAccount')
+    function script:Get-FakeWrites { @($script:Calls | Where-Object { $script:WriteCmds -contains $_.Cmd }) }
+    # Failures that must never read as "absent": an unreachable DC and denied access, in the
+    # shapes PowerShell and the Win32/COM layer use.
+    $script:Outages = @(
+        @{ Kind = 'unreachable DC (text)'; Make = { throw 'Unable to contact the server.' } }
+        @{ Kind = 'RPC unavailable (0x800706BA)'; Make = { throw (New-Object System.Runtime.InteropServices.COMException('The RPC server is unavailable.', -2147023174)) } }
+        @{ Kind = 'access denied (UnauthorizedAccess)'; Make = { throw (New-Object System.UnauthorizedAccessException 'Access is denied.') } }
+        @{ Kind = 'access denied (0x80070005)'; Make = { throw (New-Object System.Runtime.InteropServices.COMException('Access is denied.', -2147024891)) } }
+    )
+    # Raise $script:Outage the way a real cmdlet raises a non-terminating error: it becomes an
+    # exception only under -ErrorAction Stop. Under SilentlyContinue (a lax lookup) it is swallowed
+    # and the cmdlet returns nothing - exactly the "failure reads as absent" these tests guard.
+    function script:Invoke-FakeOutage($BoundParameters) {
+        if ("$($BoundParameters['ErrorAction'])" -ne 'Stop') { return }
+        & $script:Outage
     }
     # A cmdlet stand-in whose ShouldProcess answers no, as a declined -Confirm prompt does.
     function script:New-DecliningCmdlet { $o = [pscustomobject]@{}; $o | Add-Member ScriptMethod ShouldProcess { param($a, $b) $false }; $o }
@@ -106,9 +125,11 @@ BeforeAll {
         }
         Mock -ModuleName NSP.ActiveDirectory Add-ADGroupMember { Invoke-FakeWrite 'Add-ADGroupMember' $Server { $script:D.Members["$Identity"] = @($script:D.Members["$Identity"]) + "$Members" } }
         Mock -ModuleName NSP.ActiveDirectory Get-GPO {
-            $script:Calls.Add([pscustomobject]@{ Cmd = 'Get-GPO'; Server = "$Server" })
+            $script:Calls.Add([pscustomobject]@{ Cmd = $(if ($All) { 'Get-GPO -All' } else { 'Get-GPO' }); Server = "$Server" })
+            $make = { param($n) [pscustomobject]@{ DisplayName = "$n"; Id = [guid]'22222222-2222-2222-2222-222222222222'; WmiFilter = $(if ($script:D.GpoFilter["$n"]) { [pscustomobject]@{ Name = $script:D.GpoFilter["$n"] } }) } }
+            if ($All) { foreach ($n in @($script:D.Gpos.Keys)) { & $make $n }; return }
             if (-not $script:D.Gpos.ContainsKey("$Name")) { return $null }
-            [pscustomobject]@{ DisplayName = "$Name"; Id = [guid]'22222222-2222-2222-2222-222222222222'; WmiFilter = $(if ($script:D.GpoFilter["$Name"]) { [pscustomobject]@{ Name = $script:D.GpoFilter["$Name"] } }) }
+            & $make $Name
         }
         Mock -ModuleName NSP.ActiveDirectory New-GPO { Invoke-FakeWrite 'New-GPO' $Server { $script:D.Gpos["$Name"] = $true } }
         Mock -ModuleName NSP.ActiveDirectory Import-GPO { Invoke-FakeWrite 'Import-GPO' $Server { $script:D.Gpos["$TargetName"] = $true } }
@@ -116,7 +137,9 @@ BeforeAll {
         Mock -ModuleName NSP.ActiveDirectory Get-GPRegistryValue {
             $script:Calls.Add([pscustomobject]@{ Cmd = 'Get-GPRegistryValue'; Server = "$Server" })
             $k = "$Name|$Key|$ValueName"
-            if ($script:D.Values.ContainsKey($k)) { [pscustomobject]@{ Value = $script:D.Values[$k] } }
+            if ($script:D.Values.ContainsKey($k)) { return [pscustomobject]@{ Value = $script:D.Values[$k] } }
+            # A value that is not set: assumed to surface as ERROR_FILE_NOT_FOUND (see Test-NSPADGpRegistryValueNotFound).
+            throw (New-Object System.IO.FileNotFoundException 'The registry value was not found.')
         }
         Mock -ModuleName NSP.ActiveDirectory Get-GPInheritance {
             $script:Calls.Add([pscustomobject]@{ Cmd = 'Get-GPInheritance'; Server = "$Server" })
@@ -219,6 +242,21 @@ Describe 'What becomes a result and what still throws' {
         $script:Host_ | Should -Not -Match 'SECRET-DETAIL'
         $script:Host_ | Should -Match 'WriteFailed'
     }
+    It 'the -AsResult cores contain no lax lookup: SilentlyContinue only on the two local, non-directory lines' {
+        $core = Join-Path (Split-Path -Parent $PSScriptRoot) 'Private\WriteOutcomeCore.ps1'
+        $lax = @(Select-String -LiteralPath $core -Pattern 'SilentlyContinue' | Where-Object { $_.Line -notmatch '^\s*#' -and $_.Line -notmatch '^\s{4}Lookups in' })
+        $lax.Count | Should -Be 2
+        @($lax | Where-Object { $_.Line -match 'Remove-Item -LiteralPath \$work' -or $_.Line -match 'Get-Command Add-KdsRootKey' }).Count | Should -Be 2
+    }
+    It 'says on a write failure that part may be made and nothing was rolled back' {
+        $null = InModuleScope NSP.ActiveDirectory { Invoke-NSPADOutcome -Operation X -Target T -Body { param($c) $c.Phase = 'Write'; throw 'gone' } }
+        $script:Host_ | Should -Match 'Part of the change may have been made'
+        $script:Host_ | Should -Match 'nothing was rolled back'
+    }
+    It 'says nothing about a change when it failed before any write' {
+        $null = InModuleScope NSP.ActiveDirectory { Invoke-NSPADOutcome -Operation X -Target T -Body { param($c) throw 'gone' } }
+        $script:Host_ | Should -Not -Match 'may'
+    }
     It 'says on the host that a read-back failure may leave the change made' {
         $null = InModuleScope NSP.ActiveDirectory { Invoke-NSPADOutcome -Operation X -Target T -Body { param($c) $c.Phase = 'ReadBack'; throw 'not visible' } }
         $script:Host_ | Should -Match 'may already have been made'
@@ -285,6 +323,24 @@ Describe '-AsResult on each write function' {
             Assert-OutcomeContract $r
             $r.ErrorCode | Should -Be 'PreconditionFailed'
             @($script:Calls.Cmd) | Should -Not -Contain 'New-ADOrganizationalUnit'
+        }
+        It 'Failed/PreconditionFailed, nothing written, when the existence check is denied' {
+            Mock -ModuleName NSP.ActiveDirectory Get-ADOrganizationalUnit { throw (New-Object System.UnauthorizedAccessException 'Access is denied.') }
+            (New-NSPADOrganizationalUnit @script:Ou -AsResult).ErrorCode | Should -Be 'PreconditionFailed'
+            Get-FakeWrites | Should -BeNullOrEmpty
+        }
+        It 'Failed/ReadBackFailed when the DC drops after the create; the host says it may be made' {
+            $script:N = 0
+            Mock -ModuleName NSP.ActiveDirectory Get-ADOrganizationalUnit {
+                $script:N++
+                if ($script:N -eq 1) { throw (New-Object NSPTestFake.ADIdentityNotFoundException 'Directory object not found') }
+                throw 'Unable to contact the server.'
+            }
+            $r = New-NSPADOrganizationalUnit @script:Ou -AsResult
+            Assert-OutcomeContract $r
+            $r.ErrorCode | Should -Be 'ReadBackFailed'
+            @($script:Calls.Cmd) | Should -Contain 'New-ADOrganizationalUnit'
+            $script:Host_ | Should -Match 'may already have been made'
         }
         It 'Previewed in a dry run, with nothing written' {
             Set-NSPDryRun -Enabled $true -Confirm:$false
@@ -417,12 +473,46 @@ Describe '-AsResult on each write function' {
             $script:D.Gpos[$script:GpoName] = $true
             (Import-NSPADGpoBackup -Path $script:B -AsResult).Outcome | Should -Be 'Updated'
         }
-        It 'Previewed in a dry run, and Import-GPO is NOT called (one gate in this mode)' {
+        It 'Previewed in a dry run makes ZERO writes: no Import-GPO, no filter, no link (one gate in this mode)' {
             Set-NSPDryRun -Enabled $true -Confirm:$false
-            $r = Import-NSPADGpoBackup -Path $script:B -LinkAtDomainRoot -AsResult
+            $r = Import-NSPADGpoBackup -Path $script:B -WmiFilterName $script:FilterName -LinkAtDomainRoot -AsResult
             Assert-OutcomeContract $r
             $r.Outcome | Should -Be 'Previewed'
             @($script:Calls.Cmd) | Should -Not -Contain 'Import-GPO'
+            Get-FakeWrites | Should -BeNullOrEmpty
+        }
+        It 'Failed/PreconditionFailed with nothing imported when the GPO lookup fails (<Kind>)' -ForEach @(
+            @{ Kind = 'unreachable DC (text)'; I = 0 }, @{ Kind = 'RPC unavailable'; I = 1 }, @{ Kind = 'access denied'; I = 2 }, @{ Kind = 'access denied HRESULT'; I = 3 }
+        ) {
+            $script:Outage = $script:Outages[$I].Make
+            Mock -ModuleName NSP.ActiveDirectory Get-GPO { Invoke-FakeOutage $PesterBoundParameters }
+            $r = Import-NSPADGpoBackup -Path $script:B -WmiFilterName $script:FilterName -LinkAtDomainRoot -AsResult
+            Assert-OutcomeContract $r
+            $r.ErrorCode | Should -Be 'PreconditionFailed'
+            Get-FakeWrites | Should -BeNullOrEmpty
+        }
+        It 'Failed/Conflict with nothing imported when two GPOs carry the target name' {
+            $script:D.Gpos[$script:GpoName] = $true
+            Mock -ModuleName NSP.ActiveDirectory Get-GPO { if ($All) { 1..2 | ForEach-Object { [pscustomobject]@{ DisplayName = $script:GpoName } } } }
+            $r = Import-NSPADGpoBackup -Path $script:B -AsResult
+            $r.ErrorCode | Should -Be 'Conflict'
+            Get-FakeWrites | Should -BeNullOrEmpty
+        }
+        It 'Failed/WriteFailed when the DC drops during Import-GPO; the host claims no rollback' {
+            $script:D.FailWrites = $true
+            $r = Import-NSPADGpoBackup -Path $script:B -LinkAtDomainRoot -AsResult
+            Assert-OutcomeContract $r
+            $r.ErrorCode | Should -Be 'WriteFailed'
+            $script:Host_ | Should -Match 'nothing was rolled back'
+            $script:Host_ | Should -Not -Match 'SECRET-DETAIL'
+        }
+        It 'Failed/ReadBackFailed when the read after the import cannot reach the DC' {
+            Mock -ModuleName NSP.ActiveDirectory Get-GPO { if ($All) { return } throw 'Unable to contact the server.' }
+            $r = Import-NSPADGpoBackup -Path $script:B -AsResult
+            Assert-OutcomeContract $r
+            $r.ErrorCode | Should -Be 'ReadBackFailed'
+            @($script:Calls.Cmd) | Should -Contain 'Import-GPO'
+            $script:Host_ | Should -Match 'may already have been made'
         }
         It 'Failed/NotFound for a missing filter, before Import-GPO' {
             $r = Import-NSPADGpoBackup -Path $script:B -WmiFilterName 'Nope' -AsResult
@@ -469,10 +559,81 @@ Describe '-AsResult on each write function' {
                 @($script:Calls.Cmd) | Should -Not -Contain 'New-GPO'
             } finally { $env:USERDNSDOMAIN = $saved }
         }
-        It 'Previewed in a dry run' {
+        It 'Previewed in a dry run, with zero writes' {
             Set-NSPDryRun -Enabled $true -Confirm:$false
             (New-NSPADAutoEnrollGpo -GpoName 'NSP - Auto' -DomainDn 'DC=contoso,DC=example' -AsResult).Outcome | Should -Be 'Previewed'
             @($script:Calls.Cmd) | Should -Not -Contain 'New-GPO'
+            Get-FakeWrites | Should -BeNullOrEmpty
+        }
+        It 'uses an explicit -DomainDn as given and never asks Get-ADDomain or the logon domain' {
+            Mock -ModuleName NSP.ActiveDirectory Get-ADDomain { throw 'must not be called' }
+            $saved = $env:USERDNSDOMAIN
+            try {
+                $env:USERDNSDOMAIN = 'other.example'
+                $r = New-NSPADAutoEnrollGpo -GpoName 'NSP - Auto' -DomainDn 'DC=contoso,DC=example' -AsResult
+                Assert-OutcomeContract $r
+                $r.Outcome | Should -Be 'Created'
+                @($script:D.Links['DC=contoso,DC=example']) | Should -Contain 'NSP - Auto'
+                @($script:D.Links.Keys) | Should -Be @('DC=contoso,DC=example')
+                Should -Invoke -ModuleName NSP.ActiveDirectory Get-ADDomain -Times 0 -Exactly
+            } finally { $env:USERDNSDOMAIN = $saved }
+        }
+        It 'Failed/PreconditionFailed, nothing written, when the GPO lookup fails (<Kind>)' -ForEach @(
+            @{ Kind = 'unreachable DC (text)'; I = 0 }, @{ Kind = 'RPC unavailable'; I = 1 }, @{ Kind = 'access denied'; I = 2 }, @{ Kind = 'access denied HRESULT'; I = 3 }
+        ) {
+            $script:Outage = $script:Outages[$I].Make
+            Mock -ModuleName NSP.ActiveDirectory Get-GPO { Invoke-FakeOutage $PesterBoundParameters }
+            $r = New-NSPADAutoEnrollGpo -GpoName 'NSP - Auto' -DomainDn 'DC=contoso,DC=example' -AsResult
+            Assert-OutcomeContract $r
+            $r.ErrorCode | Should -Be 'PreconditionFailed'
+            Get-FakeWrites | Should -BeNullOrEmpty
+        }
+        It 'Failed/PreconditionFailed, nothing rewritten, when a value read of the existing GPO fails (<Kind>)' -ForEach @(
+            @{ Kind = 'unreachable DC (text)'; I = 0 }, @{ Kind = 'RPC unavailable'; I = 1 }, @{ Kind = 'access denied'; I = 2 }, @{ Kind = 'access denied HRESULT'; I = 3 }
+        ) {
+            $null = New-NSPADAutoEnrollGpo -GpoName 'NSP - Auto' -DomainDn 'DC=contoso,DC=example' -AsResult
+            $script:Calls.Clear()
+            $script:Outage = $script:Outages[$I].Make
+            Mock -ModuleName NSP.ActiveDirectory Get-GPRegistryValue { Invoke-FakeOutage $PesterBoundParameters }
+            $r = New-NSPADAutoEnrollGpo -GpoName 'NSP - Auto' -DomainDn 'DC=contoso,DC=example' -AsResult
+            Assert-OutcomeContract $r
+            $r.ErrorCode | Should -Be 'PreconditionFailed'
+            Get-FakeWrites | Should -BeNullOrEmpty
+        }
+        It 'Updated when a value is not set at all (<Kind>)' -ForEach @(
+            @{ Kind = 'FileNotFoundException' }, @{ Kind = 'HRESULT 0x80070002' }
+        ) {
+            $null = New-NSPADAutoEnrollGpo -GpoName 'NSP - Auto' -DomainDn 'DC=contoso,DC=example' -AsResult
+            $k = @($script:D.Values.Keys)[0]
+            $script:D.Values.Remove($k)
+            if ($Kind -like 'HRESULT*') {
+                Mock -ModuleName NSP.ActiveDirectory Get-GPRegistryValue {
+                    $vk = "$Name|$Key|$ValueName"
+                    if ($script:D.Values.ContainsKey($vk)) { return [pscustomobject]@{ Value = $script:D.Values[$vk] } }
+                    throw (New-Object System.Runtime.InteropServices.COMException('The system cannot find the file specified.', -2147024894))
+                }
+            }
+            $r = New-NSPADAutoEnrollGpo -GpoName 'NSP - Auto' -DomainDn 'DC=contoso,DC=example' -AsResult
+            Assert-OutcomeContract $r
+            $r.Outcome | Should -Be 'Updated'
+            $script:D.Values.ContainsKey($k) | Should -BeTrue
+        }
+        It 'Failed/ReadBackFailed when the value read after the write cannot reach the DC' {
+            Mock -ModuleName NSP.ActiveDirectory Get-GPRegistryValue { throw (New-Object System.Runtime.InteropServices.COMException('The RPC server is unavailable.', -2147023174)) }
+            $r = New-NSPADAutoEnrollGpo -GpoName 'NSP - Auto' -DomainDn 'DC=contoso,DC=example' -AsResult
+            Assert-OutcomeContract $r
+            $r.ErrorCode | Should -Be 'ReadBackFailed'
+            @($script:Calls.Cmd) | Should -Contain 'Set-GPRegistryValue'
+        }
+        It 'Failed/WriteFailed when a value write fails part-way; the host says part may be made, nothing rolled back' {
+            $script:N = 0
+            Mock -ModuleName NSP.ActiveDirectory Set-GPRegistryValue { $script:N++; if ($script:N -gt 1) { throw $script:Secret } }
+            $r = New-NSPADAutoEnrollGpo -GpoName 'NSP - Auto' -DomainDn 'DC=contoso,DC=example' -AsResult
+            Assert-OutcomeContract $r
+            $r.ErrorCode | Should -Be 'WriteFailed'
+            $script:Host_ | Should -Match 'Part of the change may have been made'
+            $script:Host_ | Should -Match 'nothing was rolled back'
+            $script:Host_ | Should -Not -Match 'SECRET-DETAIL'
         }
     }
 
@@ -517,6 +678,30 @@ Describe '-AsResult on each write function' {
         It 'Failed/ReadBackFailed when the account does not test good after the install' {
             $script:D.DropWrites = $true
             (Install-NSPADServiceAccount -Name 'svc_job' -AsResult).ErrorCode | Should -Be 'ReadBackFailed'
+        }
+        It 'Failed/PreconditionFailed, nothing installed, when the first test fails (<Kind>): never read as "not installed"' -ForEach @(
+            @{ Kind = 'unreachable DC (text)'; I = 0 }, @{ Kind = 'RPC unavailable'; I = 1 }, @{ Kind = 'access denied'; I = 2 }, @{ Kind = 'access denied HRESULT'; I = 3 }
+        ) {
+            $script:Outage = $script:Outages[$I].Make
+            Mock -ModuleName NSP.ActiveDirectory Test-ADServiceAccount { Invoke-FakeOutage $PesterBoundParameters }
+            $r = Install-NSPADServiceAccount -Name 'svc_job' -AsResult
+            Assert-OutcomeContract $r
+            $r.ErrorCode | Should -Be 'PreconditionFailed'
+            Get-FakeWrites | Should -BeNullOrEmpty
+        }
+        It 'Failed/NotFound, nothing installed, when the gMSA does not exist' {
+            Mock -ModuleName NSP.ActiveDirectory Test-ADServiceAccount { throw (New-Object NSPTestFake.ADIdentityNotFoundException 'Cannot find the service account.') }
+            $r = Install-NSPADServiceAccount -Name 'svc_job' -AsResult
+            Assert-OutcomeContract $r
+            $r.ErrorCode | Should -Be 'NotFound'
+            Get-FakeWrites | Should -BeNullOrEmpty
+        }
+        It 'Failed/ReadBackFailed when the test after the install cannot reach the DC' {
+            $script:N = 0
+            Mock -ModuleName NSP.ActiveDirectory Test-ADServiceAccount { $script:N++; if ($script:N -gt 1) { throw 'Unable to contact the server.' }; $false }
+            $r = Install-NSPADServiceAccount -Name 'svc_job' -AsResult
+            $r.ErrorCode | Should -Be 'ReadBackFailed'
+            @($script:Calls.Cmd) | Should -Contain 'Install-ADServiceAccount'
         }
     }
 

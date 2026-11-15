@@ -129,6 +129,9 @@ function Invoke-NSPADOutcome {
         # No exception text anywhere from here: not on the object, not on the host (transcripts
         # capture both). Run the same call without -AsResult to see the directory's own error.
         Write-Host "  $Operation failed ($code). Run it without -AsResult to see the error." -ForegroundColor Red
+        # Nothing is ever rolled back. A failed write may have changed part of what was planned
+        # (for example some GPO values); a failed read-back may follow a write that worked.
+        if ($ctx.Phase -eq 'Write') { Write-Host '  Part of the change may have been made before the failure; nothing was rolled back.' -ForegroundColor Yellow }
         if ($ctx.Phase -eq 'ReadBack') { Write-Host '  The change may already have been made; nothing was rolled back.' -ForegroundColor Yellow }
         return (New-NSPADWriteOutcome -Operation $Operation -Target $Target -Server $ctx.Server -Outcome Failed -ErrorCode $code)
     }

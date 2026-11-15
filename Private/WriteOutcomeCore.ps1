@@ -25,6 +25,48 @@ function Get-NSPADOutcomeOu {
     catch { if (Test-NSPADIdentityNotFound $_) { return $null } throw }
 }
 
+<#
+    Lookups in the -AsResult paths never use -ErrorAction SilentlyContinue: a DC that cannot be
+    reached, or access that is denied, must not read as "absent" and lead to a create or a rewrite.
+    Each lookup is strict; only a specific not-found is "absent", and anything else throws (and so
+    becomes PreconditionFailed before the first write, or ReadBackFailed after it).
+#>
+
+function Get-NSPADOutcomeGpo {
+    # The GPO with display name $Name, or $null when the domain has none. Lists every GPO and
+    # matches the name, so absence never depends on the shape of Get-GPO's "not found" error
+    # (unverified without RSAT). Any read failure throws. Two GPOs with that name: Conflict.
+    param([Parameter(Mandatory)][string]$Name, [hashtable]$Srv)
+    if (-not $Srv) { $Srv = @{} }
+    $found = @(Get-GPO -All @Srv -ErrorAction Stop | Where-Object { "$($_.DisplayName)" -eq $Name })
+    if ($found.Count -gt 1) { throw (New-NSPADCodedError Conflict "More than one GPO is named '$Name'.") }
+    if ($found.Count -eq 1) { return $found[0] }
+    return $null
+}
+
+function Test-NSPADGpRegistryValueNotFound {
+    # True only for "this registry value or key is not set in the GPO": a FileNotFoundException,
+    # or HRESULT 0x80070002 (ERROR_FILE_NOT_FOUND), anywhere in the chain. Access denied
+    # (0x80070005), RPC unavailable and everything else are NOT absence. Assumed from the Group
+    # Policy API's Win32 errors, not seen in a lab: if the real shape differs, a missing value
+    # gives PreconditionFailed (fails closed), never a false AlreadyPresent.
+    param($ErrorRecord)
+    $ex = $ErrorRecord.Exception
+    while ($ex) {
+        if ($ex -is [System.IO.FileNotFoundException] -or $ex.HResult -eq -2147024894) { return $true }
+        $ex = $ex.InnerException
+    }
+    return $false
+}
+
+function Get-NSPADOutcomeGpRegistryValue {
+    # One registry value of a GPO, or $null when it is not set. Any other failure throws.
+    param([Parameter(Mandatory)][string]$GpoName, [Parameter(Mandatory)][string]$Key, [Parameter(Mandatory)][string]$ValueName, [hashtable]$Srv)
+    if (-not $Srv) { $Srv = @{} }
+    try { return (Get-GPRegistryValue -Name $GpoName -Key $Key -ValueName $ValueName @Srv -ErrorAction Stop) }
+    catch { if (Test-NSPADGpRegistryValueNotFound $_) { return $null } throw }
+}
+
 function Invoke-NSPADOrganizationalUnitOutcome {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '', Justification = 'ShouldProcess runs on the public cmdlet passed as -Cmdlet, which declares SupportsShouldProcess.')]
     param($Cmdlet, [string]$Name, [string]$Path, [string]$Description, [string]$Server)
@@ -252,7 +294,8 @@ function Invoke-NSPADGpoBackupOutcome {
                 Write-Host "  [DRY RUN] Import GPO backup '$($backup.DisplayName)' as '$name'$(if ($WmiFilterName) { ", WMI filter '$WmiFilterName'" })$(if ($LinkAtDomainRoot) { ', link at the domain root' })" -ForegroundColor Cyan
                 return @{ Outcome = 'Previewed' }
             }
-            $existedBefore = [bool](Get-GPO -Name $name @srv -ErrorAction SilentlyContinue)
+            # Strict: a failed lookup is PreconditionFailed here, never "no GPO yet".
+            $existedBefore = [bool](Get-NSPADOutcomeGpo -Name $name -Srv $srv)
 
             $ctx.Phase = 'Write'
             Convert-NSPADGpoBackupFolder -BackupRoot $backup.BackupRoot -From $script:NSPADGpoPlaceholder -To $names
@@ -271,8 +314,12 @@ function Invoke-NSPADGpoBackupOutcome {
             if ($LinkAtDomainRoot -and -not (Test-NSPADGpoLinked -GpoName $name -TargetDN $domainDn -Server $Server)) {
                 throw (New-NSPADCodedError ReadBackFailed "GPO '$name' is not linked at the domain root after the import.")
             }
+            # Updated here means "Import-GPO overwrote an existing GPO and the read-back matched",
+            # NOT "drift was found": the backup's settings are not compared before the import.
             return @{ Outcome = $(if ($existedBefore) { 'Updated' } else { 'Created' }); ObservedTarget = "$($after.DisplayName)"; ObservedMatch = $true }
         } finally {
+            # Local temp-folder cleanup, not a directory read: a leftover copy must not turn a
+            # finished import into a failure.
             Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false
         }
     }
@@ -293,12 +340,13 @@ function Invoke-NSPADAutoEnrollGpoOutcome {
         $plan = @(Get-NSPADAutoEnrollGpoPlan -IncludeComputerConfig:$IncludeComputerConfig)
         $valuesMatch = {
             foreach ($v in $plan) {
-                $cur = Get-GPRegistryValue -Name $GpoName -Key $v.Key -ValueName $v.ValueName @srv -ErrorAction SilentlyContinue
+                # Strict: only "not set" is a mismatch; access denied or an unreachable DC throws.
+                $cur = Get-NSPADOutcomeGpRegistryValue -GpoName $GpoName -Key $v.Key -ValueName $v.ValueName -Srv $srv
                 if (-not $cur -or "$($cur.Value)" -ne "$($v.Value)") { return $false }
             }
             return $true
         }
-        $existing = Get-GPO -Name $GpoName @srv -ErrorAction SilentlyContinue
+        $existing = Get-NSPADOutcomeGpo -Name $GpoName -Srv $srv
         if ($existing -and (& $valuesMatch) -and (Test-NSPADGpoLinked -GpoName $GpoName -TargetDN $dn -Server $Server)) {
             Write-Host "  GPO '$GpoName' already has every value and is linked - skipping." -ForegroundColor Gray
             return @{ Outcome = 'AlreadyPresent'; ObservedTarget = "$($existing.DisplayName)"; ObservedMatch = $true }
@@ -405,8 +453,13 @@ function Invoke-NSPADInstallServiceAccountOutcome {
         if (-not $Cmdlet.ShouldProcess($env:COMPUTERNAME, "Install gMSA '$bare'")) { return @{ Outcome = (Get-NSPADDeclinedOutcome) } }
         Use-NSPADDependency
         Assert-NSPADCommand Install-ADServiceAccount
-        $already = $false
-        try { $already = [bool](Test-ADServiceAccount -Identity $bare -ErrorAction Stop) } catch { $already = $false }
+        # Strict: False means "not usable here yet". A missing account is NotFound; any other
+        # failure (DC unreachable, access denied) throws, so it is never read as "not installed".
+        try { $already = [bool](Test-ADServiceAccount -Identity $bare -ErrorAction Stop) }
+        catch {
+            if (Test-NSPADIdentityNotFound $_) { throw (New-NSPADCodedError NotFound "No gMSA '$bare' in the directory.") }
+            throw
+        }
         if ($already) {
             Write-Host "  gMSA '$bare' already works on $env:COMPUTERNAME - skipping install." -ForegroundColor Gray
             return @{ Outcome = 'AlreadyPresent'; ObservedTarget = "$bare on $env:COMPUTERNAME"; ObservedMatch = $true }
@@ -437,6 +490,7 @@ function Invoke-NSPADKdsRootKeyOutcome {
         }
         if (-not $Cmdlet.ShouldProcess("forest of $($di.DNSRoot)", "Create a KDS root key usable from $($EffectiveTime.ToString('u'))")) { return @{ Outcome = (Get-NSPADDeclinedOutcome) } }
         Use-NSPADDependency
+        # A local command check, not a directory read; its absence fails closed.
         if (-not (Get-Command Add-KdsRootKey -ErrorAction SilentlyContinue)) { throw (New-NSPADCodedError PreconditionFailed 'Add-KdsRootKey is not available on this machine.') }
         $ctx.Phase = 'Write'
         $step = Invoke-NSPStep -Description "Create a KDS root key usable from $($EffectiveTime.ToString('u'))" `

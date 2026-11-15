@@ -34,7 +34,8 @@ function Import-NSPADGpoBackup {
         import has not reached yet. Default: each cmdlet picks one.
     .PARAMETER AsResult
         Return an NSP.ActiveDirectory.WriteOutcome instead of the GpoImport object: Created (no GPO
-        of that name before), Updated (Import-GPO overwrote one) or Failed. Created/Updated need the
+        of that name before), Updated (Import-GPO overwrote one: the backup is not compared with the
+        GPO first, so Updated does not mean drift was found) or Failed. Created/Updated need the
         GPO, the requested filter and the requested link all read back. Unlike the default path,
         Import-GPO itself follows NSP.Toolkit's dry run in this mode: with dry run on, nothing is
         imported and the outcome is Previewed. CHECK Outcome. Not management-plane verification.
